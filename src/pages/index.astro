@@ -1,16 +1,32 @@
 ---
-
+// src/pages/index.astro
+import Layout from '../layouts/Layout.astro';
+import AppShell from '../components/AppShell.astro';
+import Header from '../components/Header.svelte'; // 👈 副檔名變了
+import MediaSidebar from '../components/MediaSidebar.astro';
+import VideoPlayer from '../components/VideoPlayer.svelte'; 
+import Timeline from '../components/Timeline.svelte';   // ✅ 改用這個
+import PropertiesPanel from '../components/PropertiesPanel.astro';
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<Layout>
+  <!-- 使用 AppShell 來管理佈局 -->
+  <AppShell>
+    
+    <!-- 1. 頂部 Header -->
+    <Header slot="header" client:load />
+
+    <!-- 2. 左側 Sidebar -->
+    <MediaSidebar slot="left-sidebar" />
+
+    <!-- 3. 中間區域 (這裡我們直接放入兩個元件，因為 AppShell 的 main 插槽是 flex-col) -->
+    <div slot="main" class="flex flex-col h-full">
+       <VideoPlayer client:load />
+      <Timeline client:load />
+    </div>
+
+    <!-- 4. 右側 Sidebar -->
+    <PropertiesPanel slot="right-sidebar" />
+
+  </AppShell>
+</Layout>

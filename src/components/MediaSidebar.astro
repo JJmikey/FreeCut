@@ -1,0 +1,21 @@
+---
+import FileUploader from './FileUploader.svelte';
+---
+
+<aside class="w-[280px] flex flex-col border-r border-gray-700 bg-[#181818] flex-shrink-0">
+  <!-- Tabs -->
+  <div class="flex border-b border-gray-700 shrink-0">
+    <button class="flex-1 py-3 text-sm text-cyan-400 border-b-2 border-cyan-400 bg-[#252525] flex justify-center items-center gap-2">
+      Media
+    </button>
+    <button class="flex-1 py-3 text-sm text-gray-400 hover:text-gray-200 flex justify-center items-center gap-2">
+      AI Tools
+    </button>
+  </div>
+
+  <!-- Content Area -->
+  <div class="p-4 flex-1 overflow-hidden flex flex-col">
+    <!-- 這裡載入 Svelte 組件 -->
+    <FileUploader client:load />
+  </div>
+</aside>

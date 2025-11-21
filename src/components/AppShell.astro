@@ -1,0 +1,24 @@
+---
+// src/components/AppShell.astro
+---
+
+<div class="flex flex-col h-screen overflow-hidden">
+  <!-- Header 插槽 -->
+  <slot name="header" />
+
+  <!-- 主要工作區 (水平排列) -->
+  <main class="flex-1 flex overflow-hidden">
+    
+    <!-- 左側插槽 -->
+    <slot name="left-sidebar" />
+
+    <!-- 中間區域 (包含預覽 + 時間軸) -->
+    <section class="flex-1 flex flex-col min-w-0">
+      <slot name="main" />
+    </section>
+
+    <!-- 右側插槽 -->
+    <slot name="right-sidebar" />
+    
+  </main>
+</div>
