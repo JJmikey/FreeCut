@@ -4,6 +4,7 @@
     import { onMount } from 'svelte';
 
     let pixelsPerSecond = 20; 
+    let timelineContainer; 
     
     // --- 狀態變數 ---
     let totalDuration = 60;     
@@ -11,12 +12,11 @@
     // Resize 變數
     let resizingClipId = null;  
     let resizingTrack = null; 
-    // 🔥 新增：記錄正在拉哪一邊 ('start' 或 'end')
     let resizingEdge = null;  
-
     let initialX = 0;           
     let initialDuration = 0;    
-    let initialStartOffset = 0; // 記錄初始開始時間
+    let initialStartOffset = 0; 
+    let initialMediaStart = 0; // 🔥 新增：記錄初始素材偏移量 (用於正確修剪開頭)
     let maxDurationLimit = 0;   
     
     // Move 變數
@@ -44,7 +44,7 @@
 
     function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
 
-    // Drop Logic (保持不變)
+    // --- Drop Logic ---
     function handleDrop(e) {
         e.preventDefault();
         const data = e.dataTransfer.getData('application/json');
@@ -53,10 +53,21 @@
             if (file.type.startsWith('audio')) { alert("Audio -> Audio Track"); return; }
             const currentMaxTime = $mainTrackClips.length > 0 ? Math.max(...$mainTrackClips.map(c => c.startOffset + c.duration)) : 0;
             const originalDuration = file.duration || 5;
-            const newClip = { id: generateId(), fileUrl: file.url, name: file.name, type: file.type, startOffset: currentMaxTime, duration: originalDuration, sourceDuration: originalDuration };
+            
+            const newClip = { 
+                id: generateId(), 
+                fileUrl: file.url, 
+                name: file.name, 
+                type: file.type, 
+                startOffset: currentMaxTime, 
+                duration: originalDuration, 
+                sourceDuration: originalDuration,
+                mediaStartOffset: 0 // 🔥 初始化素材起始點
+            };
             mainTrackClips.update(clips => [...clips, newClip]);
         }
     }
+
     function handleAudioDrop(e) {
         e.preventDefault();
         const data = e.dataTransfer.getData('application/json');
@@ -65,26 +76,33 @@
             if (!file.type.startsWith('audio')) { alert("Video -> Main Track"); return; }
             const currentMaxTime = $audioTrackClips.length > 0 ? Math.max(...$audioTrackClips.map(c => c.startOffset + c.duration)) : 0;
             const originalDuration = file.duration || 5;
-            const newClip = { id: generateId(), fileUrl: file.url, name: file.name, type: file.type, startOffset: currentMaxTime, duration: originalDuration, sourceDuration: originalDuration };
+            
+            const newClip = { 
+                id: generateId(), 
+                fileUrl: file.url, 
+                name: file.name, 
+                type: file.type, 
+                startOffset: currentMaxTime, 
+                duration: originalDuration, 
+                sourceDuration: originalDuration,
+                mediaStartOffset: 0 // 🔥 初始化素材起始點
+            };
             audioTrackClips.update(clips => [...clips, newClip]);
         }
     }
 
-    // --- 🔥 改良版：縮放邏輯 (區分 Start/End) ---
-    // edge: 'start' (左邊) 或 'end' (右邊)
+    // --- Resize Logic (修正版：支援 Trim Start 正確偏移) ---
     function startResize(e, clip, trackType, edge) {
         e.stopPropagation();
         resizingClipId = clip.id;
         resizingTrack = trackType;
-        resizingEdge = edge; // 記錄方向
-
+        resizingEdge = edge; 
         initialX = e.clientX;
         initialDuration = clip.duration;
         initialStartOffset = clip.startOffset;
-        
-        // 注意：如果是拉左邊，長度上限需要特別計算 (暫時簡化邏輯)
+        initialMediaStart = clip.mediaStartOffset || 0; // 記錄當前素材偏移
         maxDurationLimit = clip.sourceDuration || clip.duration;
-
+        
         showGuide = true;
         window.addEventListener('mousemove', handleResizeMove);
         window.addEventListener('mouseup', stopResize);
@@ -92,12 +110,12 @@
 
     function handleResizeMove(e) {
         if (!resizingClipId) return;
-        
         const deltaX = e.clientX - initialX;
         const deltaSeconds = deltaX / pixelsPerSecond; 
         
         let newDuration = initialDuration;
         let newStartOffset = initialStartOffset;
+        let newMediaStart = initialMediaStart; // 準備計算新的素材起始點
         
         // 🧲 磁吸設定
         const snapThreshold = 15 / pixelsPerSecond;
@@ -107,63 +125,72 @@
             // --- 拉右邊 (End Trim) ---
             let tempEnd = initialStartOffset + initialDuration + deltaSeconds;
             
+            // 磁吸
             if (Math.abs(tempEnd - targetTime) < snapThreshold) {
                 tempEnd = targetTime;
             }
 
+            // 計算長度 (注意：最大長度受到 mediaStartOffset 的影響)
+            // 可用剩餘長度 = 原始總長 - 已經剪掉的開頭
+            const maxAllowedDuration = maxDurationLimit - initialMediaStart;
+            
             newDuration = tempEnd - initialStartOffset;
             newDuration = Math.max(0.5, newDuration); 
-            newDuration = Math.min(maxDurationLimit, newDuration); 
+            newDuration = Math.min(maxAllowedDuration, newDuration); 
 
         } else if (resizingEdge === 'start') {
             // --- 拉左邊 (Start Trim) ---
             let tempStart = initialStartOffset + deltaSeconds;
 
-            // 🧲 磁吸
+            // 磁吸
             if (Math.abs(tempStart - targetTime) < snapThreshold) {
                 tempStart = targetTime;
             }
 
-            // 計算變化量
             const change = tempStart - initialStartOffset;
             let attemptedDuration = initialDuration - change;
 
-            // 🔥 限制 1: 不能短於 0.5秒
+            // 限制 1: 不能短於 0.5秒
             if (attemptedDuration < 0.5) {
                 newStartOffset = initialStartOffset + (initialDuration - 0.5);
                 newDuration = 0.5;
+                newMediaStart = initialMediaStart + (initialDuration - 0.5);
             } 
-            // 🔥 限制 2: 關鍵修復！不能長於原始素材長度 (sourceDuration)
-            else if (attemptedDuration > maxDurationLimit) {
-                newDuration = maxDurationLimit;
-                // startOffset 只能回推到「原本長度允許」的最早位置
-                // 公式：新的開始 = 初始開始 - (最大長度 - 初始長度)
-                newStartOffset = initialStartOffset - (maxDurationLimit - initialDuration);
+            // 限制 2: 往左拉不能超過原始長度 (即 mediaStartOffset 不能小於 0)
+            else if (initialMediaStart + change < 0) {
+                newMediaStart = 0;
+                newStartOffset = initialStartOffset - initialMediaStart;
+                newDuration = initialDuration + initialMediaStart;
             }
             else {
-                // 正常情況
                 newStartOffset = tempStart;
                 newDuration = attemptedDuration;
+                // 🔥 關鍵：Trim Start 時，素材起始點也要跟著位移
+                newMediaStart = initialMediaStart + change;
             }
             
-            // 🔥 限制 3: Timeline 起點不能小於 0
             if (newStartOffset < 0) {
                 newStartOffset = 0;
-                // 如果頂到 timeline 0，長度就只能加這麼多
-                newDuration = initialDuration + initialStartOffset;
-                // 再次檢查有沒有超過原始長度 (雙重保險)
-                newDuration = Math.min(maxDurationLimit, newDuration);
+                // 邊界處理簡化：如果頂到 0，就停止計算
+                const diff = 0 - (initialStartOffset + deltaSeconds);
+                // 這裡簡單處理：不讓 startOffset 小於 0
             }
         }
 
-        // 更新 Store
+        // 更新 Store (包含 mediaStartOffset)
+        const updateLogic = (clips) => clips.map(c => c.id === resizingClipId ? { 
+            ...c, 
+            startOffset: newStartOffset, 
+            duration: newDuration,
+            mediaStartOffset: newMediaStart
+        } : c);
+
         if (resizingTrack === 'main') {
-            mainTrackClips.update(clips => clips.map(c => c.id === resizingClipId ? { ...c, startOffset: newStartOffset, duration: newDuration } : c));
+            mainTrackClips.update(updateLogic);
         } else if (resizingTrack === 'audio') {
-            audioTrackClips.update(clips => clips.map(c => c.id === resizingClipId ? { ...c, startOffset: newStartOffset, duration: newDuration } : c));
+            audioTrackClips.update(updateLogic);
         }
 
-        // 更新 UI 輔助線
         guideX = e.clientX;
         const currentEdgeTime = resizingEdge === 'end' ? (newStartOffset + newDuration) : newStartOffset;
         const isSnapped = Math.abs(currentEdgeTime - $currentTime) < 0.001;
@@ -179,7 +206,7 @@
         window.removeEventListener('mouseup', stopResize);
     }
 
-    // --- 移動邏輯 (保持不變) ---
+    // --- Move Logic ---
     function startMoveClip(e, clip, trackType) {
         e.stopPropagation();
         movingClipId = clip.id;
@@ -225,8 +252,20 @@
         window.removeEventListener('mouseup', stopMoveClip);
     }
 
-    function handleTimelineClick(e) {
-        const rect = e.currentTarget.getBoundingClientRect();
+    // --- Scrubbing Logic ---
+    function handleTimelineMouseDown(e) {
+        updateTimeFromEvent(e);
+        window.addEventListener('mousemove', handleTimelineMouseMove);
+        window.addEventListener('mouseup', handleTimelineMouseUp);
+    }
+    function handleTimelineMouseMove(e) { updateTimeFromEvent(e); }
+    function handleTimelineMouseUp() {
+        window.removeEventListener('mousemove', handleTimelineMouseMove);
+        window.removeEventListener('mouseup', handleTimelineMouseUp);
+    }
+    function updateTimeFromEvent(e) {
+        if (!timelineContainer) return;
+        const rect = timelineContainer.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const timelineX = x - 96; 
         const newTime = Math.max(0, timelineX / pixelsPerSecond);
@@ -234,6 +273,7 @@
     }
 </script>
 
+<!-- HTML 結構 -->
 <div class="h-[35%] bg-[#181818] border-t border-gray-700 flex flex-col relative select-none overflow-hidden">
     
     <!-- Zoom Toolbar -->
@@ -247,7 +287,7 @@
 
     <!-- Timeline 捲動區 -->
     <div class="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar relative">
-        <div class="relative h-full flex flex-col min-w-full" style="width: {totalDuration * pixelsPerSecond + 100}px;" on:click={handleTimelineClick}>
+        <div bind:this={timelineContainer} class="relative h-full flex flex-col min-w-full" style="width: {totalDuration * pixelsPerSecond + 100}px;" on:mousedown={handleTimelineMouseDown}>
 
             <!-- Ruler -->
             <div class="h-6 border-b border-gray-700 flex text-[10px] text-gray-500 bg-[#181818] sticky left-0 z-20">
@@ -262,8 +302,8 @@
             </div>
 
             <!-- Playhead -->
-            <div class="absolute top-0 bottom-0 w-[1px] bg-cyan-400 z-40 pointer-events-none transition-all duration-75 ease-linear" style="left: {96 + ($currentTime * pixelsPerSecond)}px;">
-                <div class="w-3 h-3 -ml-[5px] -mt-1.5 rotate-45 bg-cyan-400 rounded-sm"></div>
+            <div class="absolute top-0 bottom-0 w-[1px] bg-cyan-400 z-40 pointer-events-none will-change-transform" style="left: 0; transform: translateX({96 + ($currentTime * pixelsPerSecond)}px) translateZ(0);">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 -mt-1.5 rotate-45 bg-cyan-400 rounded-sm"></div>
             </div>
 
             {#if showGuide}
@@ -287,26 +327,8 @@
                                 <div class="w-full h-full flex items-center justify-center pointer-events-none">
                                     <span class="text-[10px] text-white truncate px-1">{clip.name} ({clip.duration.toFixed(1)}s)</span>
                                 </div>
-                                
-                                <!-- 🔥 新增：左側把手 (Start Trim) -->
-                                <!-- svelte-ignore a11y-no-static-element-interactions -->
-                                <div 
-                                    class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-cyan-400/50 transition-colors flex items-center justify-center"
-                                    on:mousedown={(e) => startResize(e, clip, 'main', 'start')}
-                                    on:click|stopPropagation
-                                >
-                                    <div class="w-[2px] h-4 bg-white/50 rounded-full"></div>
-                                </div>
-
-                                <!-- 右側把手 (End Trim) -->
-                                <!-- svelte-ignore a11y-no-static-element-interactions -->
-                                <div 
-                                    class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-cyan-400/50 transition-colors flex items-center justify-center"
-                                    on:mousedown={(e) => startResize(e, clip, 'main', 'end')}
-                                    on:click|stopPropagation
-                                >
-                                    <div class="w-[2px] h-4 bg-white/50 rounded-full"></div>
-                                </div>
+                                <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-cyan-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'main', 'start')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
+                                <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-cyan-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'main', 'end')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
                             </div>
                         {/each}
                     </div>
@@ -321,16 +343,8 @@
                                 <div class="w-full h-full flex items-center justify-center pointer-events-none">
                                     <span class="text-[10px] text-white truncate px-1">🎵 {clip.name} ({clip.duration.toFixed(1)}s)</span>
                                 </div>
-                                
-                                <!-- 🔥 新增：左側把手 -->
-                                <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-green-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'start')} on:click|stopPropagation>
-                                    <div class="w-[2px] h-4 bg-white/50 rounded-full"></div>
-                                </div>
-                                
-                                <!-- 右側把手 -->
-                                <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-green-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'end')} on:click|stopPropagation>
-                                    <div class="w-[2px] h-4 bg-white/50 rounded-full"></div>
-                                </div>
+                                <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-green-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'start')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
+                                <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-green-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'end')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
                             </div>
                         {/each}
                     </div>

@@ -1,12 +1,19 @@
 // src/stores/timelineStore.js
 import { writable } from 'svelte/store';
 
-// 這裡儲存所有的片段 (Clips)
-// 格式範例: { id: 1, fileUrl: '...', type: 'video', startOffset: 0, duration: 5 }
 export const mainTrackClips = writable([]);
-
-// 🔥 新增：第二軌（背景音樂軌）
 export const audioTrackClips = writable([]);
 
-// 用來產生唯一 ID 的輔助函數
 export const generateId = () => '_' + Math.random().toString(36).substr(2, 9);
+
+// 可以在這裡加一個 helper 確保新 clip 結構一致 (選用，但建議)
+export const createClip = (file, startOffset) => ({
+    id: generateId(),
+    fileUrl: file.url,
+    name: file.name,
+    type: file.type,
+    startOffset: startOffset,
+    duration: file.duration || 5,
+    sourceDuration: file.duration || 5,
+    mediaStartOffset: 0 // 🔥 新增：預設從影片第 0 秒開始播
+});

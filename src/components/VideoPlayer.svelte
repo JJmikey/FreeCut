@@ -1,6 +1,5 @@
 <script>
     import { currentVideoSource, currentTime, isPlaying } from '../stores/playerStore';
-    // 👇 1. 引入 audioTrackClips 以便進行混音
     import { mainTrackClips, audioTrackClips } from '../stores/timelineStore';
     import { isExporting, startExportTrigger } from '../stores/exportStore';
     import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
@@ -11,7 +10,7 @@
     let exportProgress = 0;
     let exportStatus = "";
 
-    // 👇 2. 計算總長度 (取 Main 與 Audio 兩者較長者)
+    // 計算總長度 (取 Main 與 Audio 兩者較長者)
     $: maxMain = $mainTrackClips.length > 0 
         ? Math.max(...$mainTrackClips.map(c => c.startOffset + c.duration)) : 0;
     $: maxAudio = $audioTrackClips.length > 0
@@ -89,8 +88,9 @@
                 });
                 audioEncoder.configure(audioConfig);
 
-                // A. 混音：🔥 關鍵！合併 Main Track 和 Audio Track 的所有片段
+                // A. 混音：合併 Main Track 和 Audio Track 的所有片段
                 const allClips = [...$mainTrackClips, ...$audioTrackClips];
+                // 這裡會用到正確的 mediaStartOffset
                 const mixedBuffer = await mixAllAudio(allClips, durationInSeconds, audioConfig.sampleRate);
                 
                 // B. 轉為交錯數據
@@ -98,7 +98,7 @@
                 const right = mixedBuffer.getChannelData(1);
                 const interleaved = interleave(left, right);
 
-                // C. 🔥 切片 (Chunking) 邏輯
+                // C. 切片 (Chunking) 邏輯
                 const chunkSize = audioConfig.sampleRate; // 1秒的樣本數
                 const totalSamples = mixedBuffer.length;
 
@@ -149,7 +149,10 @@
                         videoRef.src = activeClip.fileUrl;
                         await new Promise(r => videoRef.onloadedmetadata = r);
                     }
-                    const seekTime = timeInSeconds - activeClip.startOffset;
+                    
+                    // 🔥 修正導出時的 Seek Time (加入 mediaStartOffset)
+                    // 目前時間 - Clip在軸上的開始 + Clip本身的裁剪偏移
+                    const seekTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
                     
                     // 穩定的 Seek
                     await new Promise((resolve, reject) => {
@@ -206,7 +209,6 @@
 
     // --- Helpers ---
     async function mixAllAudio(clips, totalDuration, targetSampleRate) {
-        // 建立離線環境
         const offlineCtx = new OfflineAudioContext(2, Math.ceil(totalDuration * targetSampleRate), targetSampleRate);
         
         const promises = clips.map(async (clip) => {
@@ -220,15 +222,14 @@
                 const source = offlineCtx.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(offlineCtx.destination);
-                source.start(clip.startOffset);
                 
-                // 處理長度裁剪
-                if (clip.duration < audioBuffer.duration) {
-                    source.stop(clip.startOffset + clip.duration);
-                }
+                // 🔥 修正 Audio 混音邏輯：加入 mediaStartOffset
+                // start(when, offset, duration)
+                const offset = clip.mediaStartOffset || 0;
+                source.start(clip.startOffset, offset, clip.duration);
+                
             } catch (e) { 
                 // 忽略純圖片或無聲影片的錯誤
-                // console.warn(e); 
             }
         });
         await Promise.all(promises);
@@ -248,19 +249,23 @@
     }
 
     // --- UI Logic (Preview) ---
-    // 這裡只顯示 Video 軌道的預覽畫面
     $: activeClip = $mainTrackClips.find(clip => $currentTime >= clip.startOffset && $currentTime < (clip.startOffset + clip.duration));
     
     $: if (videoRef && activeClip && !$isExporting) {
         if (!videoRef.src.includes(activeClip.fileUrl)) videoRef.src = activeClip.fileUrl;
-        const seekTime = $currentTime - activeClip.startOffset;
+        
+        // 🔥 修正預覽時的 Seek Time (加入 mediaStartOffset)
+        const seekTime = ($currentTime - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
+        
         if (Math.abs(videoRef.currentTime - seekTime) > 0.2) videoRef.currentTime = seekTime;
     }
+    
     function togglePlay() {
         if (!hasClips || $isExporting) return;
         if (!$isPlaying && $currentTime >= contentDuration) currentTime.set(0);
         isPlaying.update(v => !v);
     }
+    
     $: if ($isPlaying && !$isExporting) {
         lastTime = performance.now();
         requestAnimationFrame(loop);
@@ -268,10 +273,12 @@
     } else {
         if (videoRef && !$isExporting) videoRef.pause();
     }
+    
     $: if ($isPlaying && hasClips && $currentTime >= contentDuration && !$isExporting) {
         isPlaying.set(false);
         currentTime.set(contentDuration);
     }
+    
     function loop(timestamp) {
         if (!$isPlaying || $isExporting) return;
         const deltaTime = (timestamp - lastTime) / 1000;
