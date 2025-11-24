@@ -6,6 +6,9 @@ export const audioTrackClips = writable([]);
 export const selectedClipId = writable(null);
 export const draggedFile = writable(null);
 
+// 🔥 新增：儲存所有已上傳的素材 (Media Library)
+export const uploadedFiles = writable([]); 
+
 export const generateId = () => '_' + Math.random().toString(36).substr(2, 9);
 
 // 🔥 修改後的 helper：加入 volume 和 rawFile 參數

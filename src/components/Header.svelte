@@ -42,8 +42,8 @@
   <div class="flex items-center gap-6">
     <div class="flex items-center gap-2 cursor-pointer">
       <!-- Logo -->
-      <div class="w-6 h-6 bg-cyan-600 rounded flex items-center justify-center font-bold text-white text-xs">C</div>
-      <span class="text-gray-100 font-bold text-lg">CapCut Clone</span>
+      <div class="w-6 h-6 bg-cyan-600 rounded flex items-center justify-center font-bold text-white text-xs">F</div>
+      <span class="text-gray-100 font-bold text-lg">FreeCut</span>
     </div>
     
     <!-- 分隔線 -->

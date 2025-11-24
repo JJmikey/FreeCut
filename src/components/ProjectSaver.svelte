@@ -1,13 +1,13 @@
 <script>
     import { onMount } from 'svelte';
-    import { mainTrackClips, audioTrackClips } from '../stores/timelineStore';
+    // 🔥 引入 uploadedFiles
+    import { mainTrackClips, audioTrackClips, uploadedFiles } from '../stores/timelineStore';
     import { saveProject, loadProject } from '../utils/projectManager';
 
     onMount(async () => {
         console.log("✅ ProjectSaver: 組件已掛載，準備啟動...");
 
         try {
-            // 1. 嘗試恢復
             console.log("📂 ProjectSaver: 正在讀取資料庫...");
             const success = await loadProject();
             console.log(success ? "🎉 ProjectSaver: 專案恢復成功！" : "ℹ️ ProjectSaver: 沒有舊存檔，建立新專案。");
@@ -15,10 +15,9 @@
             console.error("❌ ProjectSaver: 讀取失敗", err);
         }
 
-        // 2. 設定自動存檔
         let timer;
         const autoSave = () => {
-            console.log("⏳ ProjectSaver: 偵測到變動，準備存檔...");
+            // console.log("⏳ ProjectSaver: 偵測到變動...");
             clearTimeout(timer);
             timer = setTimeout(async () => {
                 try {
@@ -32,10 +31,13 @@
 
         const unsubscribeMain = mainTrackClips.subscribe(autoSave);
         const unsubscribeAudio = audioTrackClips.subscribe(autoSave);
+        // 🔥 訂閱素材庫變動
+        const unsubscribeFiles = uploadedFiles.subscribe(autoSave);
 
         return () => {
             unsubscribeMain();
             unsubscribeAudio();
+            unsubscribeFiles();
         };
     });
 </script>

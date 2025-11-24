@@ -1,5 +1,6 @@
 import { openDB } from 'idb';
-import { mainTrackClips, audioTrackClips } from '../stores/timelineStore';
+// 引入所有需要存檔的 Store
+import { mainTrackClips, audioTrackClips, uploadedFiles } from '../stores/timelineStore';
 import { get } from 'svelte/store';
 
 const DB_NAME = 'CapCutCloneDB';
@@ -21,19 +22,14 @@ async function initDB() {
 export async function saveProject() {
     const db = await initDB();
     
-    // 取得目前的狀態
     const mainClips = get(mainTrackClips);
     const audioClips = get(audioTrackClips);
+    const libraryFiles = get(uploadedFiles);
 
-    // 準備要存的資料
-    // 注意：我們不需要存 'fileUrl' (因為它是暫時的)，但我們必須確保 'file' 物件本身有被存起來
-    // 在 FileUploader 裡，我們要把原始 file 物件掛載到 clip 上
-    
-    // 為了節省空間，我們可以只存必要的資料
-    // 但 IndexedDB 可以直接存 JavaScript 物件，包含 File/Blob，所以直接存整個 Array 最簡單
     const projectData = {
         main: mainClips,
         audio: audioClips,
+        files: libraryFiles,
         lastModified: Date.now()
     };
 
@@ -46,39 +42,57 @@ export async function loadProject() {
     const db = await initDB();
     const data = await db.get(STORE_NAME, PROJECT_KEY);
 
-    if (!data) return false; // 沒有存檔
+    if (!data) return false;
 
-    // 恢復資料的重要步驟：重新生成 Blob URL
-    // 因為上次存的 blob:url 現在已經無效了
-    
-    const restoreClips = (clips) => {
-        return clips.map(clip => {
-            // 如果 clip 裡面有原始 file 物件 (我們等下要在 Uploader 裡確保這點)
-            // 我們就用它來生成新的 url
-            if (clip.file instanceof Blob || clip.file instanceof File) {
+    // Helper: 重建 Blob URL
+    const restoreAssets = (items) => {
+        // 如果 items 是 undefined 或 null，回傳空陣列
+        if (!items) return [];
+
+        return items.map(item => {
+            // 檢查是否有原始 file 物件 (File 或 Blob)
+            if (item.file instanceof Blob || item.file instanceof File) {
+                
+                // 🔥 修正點：先宣告變數，確保它存在
+                let restoredThumbnails = [];
+                
+                // 檢查並恢復縮圖陣列
+                if (item.thumbnails && Array.isArray(item.thumbnails)) {
+                    restoredThumbnails = item.thumbnails.map(blob => URL.createObjectURL(blob));
+                }
+
                 return {
-                    ...clip,
-                    fileUrl: URL.createObjectURL(clip.file)
+                    ...item,
+                    // 恢復主檔案 URL
+                    fileUrl: item.fileUrl ? URL.createObjectURL(item.file) : undefined, // Clip 用
+                    url: item.url ? URL.createObjectURL(item.file) : undefined,         // FileUploader 用
+                    
+                    // 🔥 恢復縮圖 URL 陣列
+                    thumbnailUrls: restoredThumbnails
                 };
             }
-            return clip;
+            return item;
         });
     };
 
-    const restoredMain = restoreClips(data.main || []);
-    const restoredAudio = restoreClips(data.audio || []);
+    // 依序恢復三個 Store 的資料
+    const restoredMain = restoreAssets(data.main || []);
+    const restoredAudio = restoreAssets(data.audio || []);
+    const restoredLibrary = restoreAssets(data.files || []);
 
-    // 更新 Store
+    // 寫回 Store
     mainTrackClips.set(restoredMain);
     audioTrackClips.set(restoredAudio);
+    uploadedFiles.set(restoredLibrary);
     
     return true;
 }
 
-// 清除專案 (例如使用者按了 "New Project")
+// 清除專案
 export async function clearProject() {
     const db = await initDB();
     await db.delete(STORE_NAME, PROJECT_KEY);
     mainTrackClips.set([]);
     audioTrackClips.set([]);
+    uploadedFiles.set([]);
 }
