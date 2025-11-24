@@ -32,8 +32,8 @@
 <header class="h-14 border-b border-gray-700 flex justify-between items-center px-4 bg-[#181818] flex-shrink-0">
   <div class="flex items-center gap-6">
     <div class="flex items-center gap-2 cursor-pointer">
-      <div class="w-6 h-6 bg-cyan-600 rounded flex items-center justify-center font-bold text-white text-xs">C</div>
-      <span class="text-gray-100 font-bold text-lg">CapCut Clone</span>
+      <div class="w-6 h-6 bg-cyan-600 rounded flex items-center justify-center font-bold text-white text-xs">F</div>
+      <span class="text-gray-100 font-bold text-lg">Fast video cutter</span>
     </div>
     
     <div class="h-4 w-[1px] bg-gray-600"></div>
