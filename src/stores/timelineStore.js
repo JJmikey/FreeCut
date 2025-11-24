@@ -3,7 +3,12 @@ import { writable, get } from 'svelte/store'; // 記得引入 get
 
 export const mainTrackClips = writable([]);
 export const audioTrackClips = writable([]);
-export const selectedClipId = writable(null);
+
+
+// 🔥 修改：改為複數，儲存 ID 陣列
+export const selectedClipIds = writable([]); 
+
+
 export const draggedFile = writable(null);
 
 // 🔥 新增：儲存所有已上傳的素材 (Media Library)

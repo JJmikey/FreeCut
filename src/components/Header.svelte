@@ -1,58 +1,44 @@
 <script>
   import { startExportTrigger, isExporting } from '../stores/exportStore';
-  // 👇 引入需要的 Store 和工具
-  import { mainTrackClips, audioTrackClips } from '../stores/timelineStore';
-  import { selectedClipId, draggedFile } from '../stores/timelineStore'; // 🔥 記得引入這兩個
-  import { currentTime, isPlaying } from '../stores/playerStore';
   import { clearProject } from '../utils/projectManager';
 
   function handleExport() {
     startExportTrigger.update(n => n + 1);
   }
 
-  // 🔥 New Project 邏輯
   async function handleNewProject() {
-    // 1. 二次確認，防止誤觸
+    console.log("🗑️ [Header] New Project 按鈕被點擊");
+
     if (!confirm("Are you sure you want to start a new project? All current progress will be lost.")) {
         return;
     }
 
-     // 1. 先清除 Store (這會觸發 AutoSave，但因為內容是空的，所以存進去也是空的，這是安全的)
-     mainTrackClips.set([]);
-    audioTrackClips.set([]);
-    
-    // 2. 清除其他狀態 (非常重要！這就是殘留的原因)
-    selectedClipId.set(null); // 清除選取框
-    draggedFile.set(null);    // 清除暫存檔
-    currentTime.set(0);       // 指針歸零
-    isPlaying.set(false);     // 停止播放
+    try {
+        console.log("正在清除資料庫...");
+        await clearProject();
+        
+        console.log("資料庫已清除，正在重新整理頁面...");
+        // 🔥 強制重新整理：這是最穩健的重置方式
+        // 它會自動清空所有 Store (selectedClipIds, draggedFile 等)，無需手動 set([])
+        window.location.reload();
 
-    // 3. 等待 Store 更新傳播一下 (Svelte 是微任務更新)
-    await new Promise(r => setTimeout(r, 50));
-
-    // 4. 最後清除資料庫
-    // 這樣就算剛才 AutoSave 跑了，我們這裡也會再殺一次，確保乾淨
-    await clearProject();
-    
-    console.log("Project reset complete.");
+    } catch (e) {
+        console.error("❌ New Project Error:", e);
+        alert("Error resetting project. Check console.");
+    }
   }
 </script>
 
 <header class="h-14 border-b border-gray-700 flex justify-between items-center px-4 bg-[#181818] flex-shrink-0">
   <div class="flex items-center gap-6">
     <div class="flex items-center gap-2 cursor-pointer">
-      <!-- Logo -->
-      <div class="w-6 h-6 bg-cyan-600 rounded flex items-center justify-center font-bold text-white text-xs">F</div>
-      <span class="text-gray-100 font-bold text-lg">FreeCut</span>
+      <div class="w-6 h-6 bg-cyan-600 rounded flex items-center justify-center font-bold text-white text-xs">C</div>
+      <span class="text-gray-100 font-bold text-lg">CapCut Clone</span>
     </div>
     
-    <!-- 分隔線 -->
     <div class="h-4 w-[1px] bg-gray-600"></div>
-    
-    <!-- 專案名稱 (未來可以讓使用者改名) -->
     <span class="text-sm text-gray-400">Untitled Project</span>
 
-    <!-- 🔥 New Project 按鈕 -->
     <button 
         on:click={handleNewProject}
         class="text-xs text-gray-400 hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-colors"
@@ -63,7 +49,6 @@
     </button>
   </div>
   
-  <!-- Export 按鈕 -->
   <button 
     on:click={handleExport}
     disabled={$isExporting}

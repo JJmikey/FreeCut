@@ -246,7 +246,18 @@
         <!-- 檔名提示 -->
         {#if isSourceMode}
              <div class="absolute top-4 left-4 bg-blue-900/80 px-2 py-1 rounded text-xs text-white z-20 pointer-events-none">Source Preview: {$currentVideoSource.name}</div>
-        {:else if activeClip && !$isExporting}
+              <!-- 🔥 新增：退出按鈕 -->
+              <button 
+              class="bg-black/60 hover:bg-red-600/80 text-white w-7 h-7 rounded flex items-center justify-center transition-colors backdrop-blur-sm shadow-lg cursor-pointer pointer-events-auto"
+              title="Close Preview & Back to Timeline"
+              on:click|stopPropagation={() => currentVideoSource.set(null)}
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            
+        
+        
+             {:else if activeClip && !$isExporting}
             <div class="absolute top-4 left-4 bg-black/50 px-2 py-1 rounded text-xs text-white z-20 pointer-events-none">Timeline: {activeClip.name}</div>
         {/if}
 

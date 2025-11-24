@@ -1,5 +1,5 @@
 import { openDB } from 'idb';
-// 引入所有需要存檔的 Store
+// 引入所有需要管理的 Store
 import { mainTrackClips, audioTrackClips, uploadedFiles } from '../stores/timelineStore';
 import { get } from 'svelte/store';
 
@@ -46,17 +46,15 @@ export async function loadProject() {
 
     // Helper: 重建 Blob URL
     const restoreAssets = (items) => {
-        // 如果 items 是 undefined 或 null，回傳空陣列
         if (!items) return [];
 
         return items.map(item => {
-            // 檢查是否有原始 file 物件 (File 或 Blob)
+            // 檢查是否有原始 file 物件
             if (item.file instanceof Blob || item.file instanceof File) {
                 
-                // 🔥 修正點：先宣告變數，確保它存在
                 let restoredThumbnails = [];
                 
-                // 檢查並恢復縮圖陣列
+                // 恢復縮圖陣列
                 if (item.thumbnails && Array.isArray(item.thumbnails)) {
                     restoredThumbnails = item.thumbnails.map(blob => URL.createObjectURL(blob));
                 }
@@ -64,23 +62,21 @@ export async function loadProject() {
                 return {
                     ...item,
                     // 恢復主檔案 URL
-                    fileUrl: item.fileUrl ? URL.createObjectURL(item.file) : undefined, // Clip 用
-                    url: item.url ? URL.createObjectURL(item.file) : undefined,         // FileUploader 用
+                    fileUrl: item.fileUrl ? URL.createObjectURL(item.file) : undefined,
+                    url: item.url ? URL.createObjectURL(item.file) : undefined,
                     
-                    // 🔥 恢復縮圖 URL 陣列
-                    thumbnailUrls: restoredThumbnails
+                    // 恢復縮圖 URL
+                    thumbnailUrls: restoredThumbnails.length > 0 ? restoredThumbnails : (item.thumbnailUrls || [])
                 };
             }
             return item;
         });
     };
 
-    // 依序恢復三個 Store 的資料
     const restoredMain = restoreAssets(data.main || []);
     const restoredAudio = restoreAssets(data.audio || []);
     const restoredLibrary = restoreAssets(data.files || []);
 
-    // 寫回 Store
     mainTrackClips.set(restoredMain);
     audioTrackClips.set(restoredAudio);
     uploadedFiles.set(restoredLibrary);
@@ -88,11 +84,14 @@ export async function loadProject() {
     return true;
 }
 
-// 清除專案
+// 🔥 清除專案 (New Project)
 export async function clearProject() {
     const db = await initDB();
+    // 1. 刪除資料庫紀錄
     await db.delete(STORE_NAME, PROJECT_KEY);
+    
+    // 2. 清空 Store (雖然 reload 會重置，但這是好習慣)
     mainTrackClips.set([]);
     audioTrackClips.set([]);
-    uploadedFiles.set([]);
+    uploadedFiles.set([]); 
 }

@@ -105,7 +105,7 @@
 
   function handleDelete(e, fileToDelete) {
       e.stopPropagation(); 
-      if (!confirm(`確定要從素材庫移除 "${fileToDelete.name}" 嗎？`)) return;
+      if (!confirm(`Are you sure to delete "${fileToDelete.name}" ?`)) return;
 
       // 🔥 更新 Store
       uploadedFiles.update(currentFiles => currentFiles.filter(f => f !== fileToDelete));
