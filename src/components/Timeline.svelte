@@ -1,9 +1,9 @@
 <script>
     import { mainTrackClips, audioTrackClips, textTrackClips, generateId, selectedClipIds, draggedFile } from '../stores/timelineStore';
     import { currentTime, isPlaying, currentVideoSource } from '../stores/playerStore';
+    import { splitClip, resolveOverlaps } from '../stores/timelineStore';
     import { onMount } from 'svelte';
     import { get } from 'svelte/store';
-    import { splitClip } from '../stores/timelineStore'; // 確保 splitClip 也有引入
 
     let pixelsPerSecond = 20; 
     let timelineContainer; 
@@ -27,7 +27,6 @@
     let movingTrack = null;
     let moveInitialX = 0;
     let moveInitialStart = 0;
-    // 🔥 新增：記錄多選移動時，每個 Clip 的初始位置
     let groupInitialOffsets = {}; 
 
     // UI 輔助
@@ -35,12 +34,11 @@
     let selectStartX = 0;
     let selectStartY = 0;
     let selectBox = { x: 0, y: 0, width: 0, height: 0 };
-
     let showGuide = false;    
     let guideX = 0;           
     let guideTimeText = "";   
 
-    // 軌道 Y 軸位置常數 (用於框選判定)
+    // 軌道 Y 軸位置 (用於框選)
     const TRACK_Y = { RULER: 24, TEXT: 64, MAIN: 96, AUDIO: 64 };
     const TRACK_BOUNDS = {
         text: { top: TRACK_Y.RULER, bottom: TRACK_Y.RULER + TRACK_Y.TEXT },
@@ -60,75 +58,68 @@
     function switchToTimeline() { currentVideoSource.set(null); }
     function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
 
-    // --- Ripple Logic ---
-    function resolveOverlaps(clips, activeId = null) {
-        if (clips.length === 0) return [];
-        const sortedClips = [...clips].sort((a, b) => {
-            if (a.id === b.id) return 0;
-            const diff = a.startOffset - b.startOffset;
-            // 優先讓主動操作的 Clip 排在前面
-            if (Math.abs(diff) < 0.1) {
-                // 如果正在多選移動，activeId 可能是 null 或 undefined (或是只傳了一個)，
-                // 這裡主要處理 Drop 或 Single Move 的情況。
-                // 對於 Batch Move，通常依靠時間排序即可。
-                if (a.id === activeId) return -1; 
-                if (b.id === activeId) return 1; 
-            }
-            return diff;
-        });
-        for (let i = 1; i < sortedClips.length; i++) {
-            const prevClip = sortedClips[i - 1];
-            const currentClip = sortedClips[i];
-            const prevEnd = prevClip.startOffset + prevClip.duration;
-            if (currentClip.startOffset < prevEnd) {
-                currentClip.startOffset = prevEnd; 
-            }
-        }
-        return sortedClips;
-    }
-
-    // --- Drop Logic ---
+    // --- Drop Logic (Main Track) ---
     function handleDrop(e) {
         e.preventDefault();
-        resetSourceMode();
+        switchToTimeline();
         const data = e.dataTransfer.getData('application/json');
         if (data) {
             const fileData = JSON.parse(data);
             if (fileData.type.startsWith('audio')) { alert("Audio -> Audio Track"); return; }
+            
             const actualFileObject = get(draggedFile); 
             const currentMaxTime = $mainTrackClips.length > 0 ? Math.max(...$mainTrackClips.map(c => c.startOffset + c.duration)) : 0;
             const originalDuration = fileData.duration || 5;
             const isImage = fileData.type.startsWith('image'); 
+
             const newClip = { 
-                id: generateId(), fileUrl: fileData.url, name: fileData.name, type: fileData.type, 
-                startOffset: currentMaxTime, duration: originalDuration, 
+                id: generateId(), 
+                fileUrl: fileData.url, 
+                name: fileData.name, 
+                type: fileData.type, 
+                startOffset: currentMaxTime, 
+                duration: originalDuration, 
                 sourceDuration: isImage ? Infinity : originalDuration,
-                mediaStartOffset: 0, volume: 1.0, 
+                mediaStartOffset: 0,
+                volume: 1.0,
                 file: actualFileObject ? actualFileObject.file : null,
-                thumbnails: actualFileObject ? actualFileObject.thumbnails : [], // 確保有存 thumbnails
-                thumbnailUrls: fileData.thumbnailUrls 
+                thumbnails: actualFileObject ? actualFileObject.thumbnails : [],
+                thumbnailUrls: fileData.thumbnailUrls || []
             };
+            
             mainTrackClips.update(clips => resolveOverlaps([...clips, newClip], newClip.id));
             draggedFile.set(null); 
         }
     }
 
+    // --- Drop Logic (Audio Track) ---
     function handleAudioDrop(e) {
         e.preventDefault();
-        resetSourceMode();
+        switchToTimeline();
         const data = e.dataTransfer.getData('application/json');
         if (data) {
             const fileData = JSON.parse(data);
             if (!fileData.type.startsWith('audio')) { alert("Video -> Main Track"); return; }
+            
             const actualFileObject = get(draggedFile);
             const currentMaxTime = $audioTrackClips.length > 0 ? Math.max(...$audioTrackClips.map(c => c.startOffset + c.duration)) : 0;
             const originalDuration = fileData.duration || 5;
+            
             const newClip = { 
-                id: generateId(), fileUrl: fileData.url, name: fileData.name, type: fileData.type, 
-                startOffset: currentMaxTime, duration: originalDuration, 
-                sourceDuration: originalDuration, mediaStartOffset: 0, volume: 1.0, 
-                file: actualFileObject ? actualFileObject.file : null
+                id: generateId(), 
+                fileUrl: fileData.url, 
+                name: fileData.name, 
+                type: fileData.type, 
+                startOffset: currentMaxTime, 
+                duration: originalDuration, 
+                sourceDuration: originalDuration, 
+                mediaStartOffset: 0, 
+                volume: 1.0, 
+                file: actualFileObject ? actualFileObject.file : null,
+                // 🔥 接收波形
+                waveform: fileData.waveform || (actualFileObject ? actualFileObject.waveform : null)
             };
+            
             audioTrackClips.update(clips => resolveOverlaps([...clips, newClip], newClip.id));
             draggedFile.set(null);
         }
@@ -136,8 +127,8 @@
 
     // --- Split & Delete ---
     function handleSplit() {
-        if (!$selectedClipIds || $selectedClipIds.length !== 1) { alert("Please select a clip to split."); return; }
-        resetSourceMode();
+        if (!$selectedClipIds || $selectedClipIds.length !== 1) { alert("Please select a single clip to split."); return; }
+        switchToTimeline();
         splitClip($selectedClipIds[0], $currentTime);
         selectedClipIds.set([]);
     }
@@ -155,25 +146,24 @@
     }
     function handleContextMenu(e, clipId) { 
         e.preventDefault(); 
-        resetSourceMode(); 
+        switchToTimeline(); 
         if (!$selectedClipIds.includes(clipId)) selectedClipIds.set([clipId]); 
         deleteSelected(); 
     }
     function selectClip(e, clipId) { 
         e.stopPropagation(); 
-        resetSourceMode();
+        switchToTimeline();
         if (e.shiftKey) {
             selectedClipIds.update(ids => ids.includes(clipId) ? ids.filter(id => id !== clipId) : [...ids, clipId]);
         } else {
             if (!$selectedClipIds.includes(clipId)) selectedClipIds.set([clipId]);
         }
     }
-    function resetSourceMode() { currentVideoSource.set(null); }
 
     // --- Resize Logic ---
     function startResize(e, clip, trackType, edge) {
         e.stopPropagation();
-        resetSourceMode();
+        switchToTimeline();
         selectedClipIds.set([clip.id]);
         resizingClipId = clip.id;
         resizingTrack = trackType;
@@ -182,7 +172,8 @@
         initialDuration = clip.duration;
         initialStartOffset = clip.startOffset;
         initialMediaStart = clip.mediaStartOffset || 0;
-        maxDurationLimit = clip.sourceDuration || clip.duration;
+        maxDurationLimit = clip.sourceDuration === undefined ? Infinity : clip.sourceDuration;
+        
         showGuide = true;
         window.addEventListener('mousemove', handleResizeMove);
         window.addEventListener('mouseup', stopResize);
@@ -192,6 +183,7 @@
         if (!resizingClipId) return;
         const deltaX = e.clientX - initialX;
         const deltaSeconds = deltaX / pixelsPerSecond; 
+        
         let newDuration = initialDuration;
         let newStartOffset = initialStartOffset;
         let newMediaStart = initialMediaStart;
@@ -201,27 +193,24 @@
         if (resizingEdge === 'end') {
             let tempEnd = initialStartOffset + initialDuration + deltaSeconds;
             if (Math.abs(tempEnd - targetTime) < snapThreshold) tempEnd = targetTime;
-            const maxAllowedDuration = maxDurationLimit - initialMediaStart;
+            const maxAllowedDuration = maxDurationLimit === Infinity ? Infinity : (maxDurationLimit - initialMediaStart);
             newDuration = tempEnd - initialStartOffset;
             newDuration = Math.max(0.5, newDuration); 
-            newDuration = Math.min(maxAllowedDuration, newDuration); 
+            if (maxAllowedDuration !== Infinity) newDuration = Math.min(maxAllowedDuration, newDuration); 
         } else if (resizingEdge === 'start') {
             let tempStart = initialStartOffset + deltaSeconds;
             if (Math.abs(tempStart - targetTime) < snapThreshold) tempStart = targetTime;
             const change = tempStart - initialStartOffset;
             let attemptedDuration = initialDuration - change;
+
             if (attemptedDuration < 0.5) {
                 newStartOffset = initialStartOffset + (initialDuration - 0.5);
                 newDuration = 0.5;
                 newMediaStart = initialMediaStart + (initialDuration - 0.5);
-            } else if (initialMediaStart + change < 0) {
+            } else if (maxDurationLimit !== Infinity && initialMediaStart + change < 0) {
                 newMediaStart = 0;
                 newStartOffset = initialStartOffset - initialMediaStart;
                 newDuration = initialDuration + initialMediaStart;
-            } else if (attemptedDuration > maxDurationLimit) {
-                 newDuration = maxDurationLimit;
-                 newStartOffset = initialStartOffset - (maxDurationLimit - initialDuration);
-                 if (initialMediaStart + change < 0) newMediaStart = 0;
             } else {
                 newStartOffset = tempStart;
                 newDuration = attemptedDuration;
@@ -250,38 +239,25 @@
         window.removeEventListener('mouseup', stopResize);
     }
 
-    // --- 🔥 Move Logic (Batch Move Fix) ---
+    // --- Move Logic ---
     function startMoveClip(e, clip, trackType) {
         e.stopPropagation();
-        resetSourceMode();
+        switchToTimeline();
         
-        // 檢查選取狀態
-        if (!$selectedClipIds.includes(clip.id)) {
-            if (!e.shiftKey) selectedClipIds.set([clip.id]); // 單選
-            else selectedClipIds.update(ids => [...ids, clip.id]); // 加選
-        } 
-        // 如果已經選中，且按了 Shift，則不做動作（保持選中狀態以便拖曳）
+        if (!$selectedClipIds.includes(clip.id) && !e.shiftKey) selectedClipIds.set([clip.id]);
+        else if (!$selectedClipIds.includes(clip.id) && e.shiftKey) selectedClipIds.update(ids => [...ids, clip.id]);
 
         movingClipId = clip.id;
         movingTrack = trackType;
         moveInitialX = e.clientX;
         moveInitialStart = clip.startOffset;
 
-        // 🔥 關鍵：快照所有選中 Clip 的初始位置
         groupInitialOffsets = {};
-        const currentSelected = get(selectedClipIds);
-        
-        // 遍歷所有軌道收集初始位置
-        const collectOffsets = (clips) => {
-            clips.forEach(c => {
-                if (currentSelected.includes(c.id)) {
-                    groupInitialOffsets[c.id] = c.startOffset;
-                }
-            });
-        };
-        collectOffsets(get(mainTrackClips));
-        collectOffsets(get(audioTrackClips));
-        collectOffsets(get(textTrackClips));
+        const allClips = [...get(mainTrackClips), ...get(audioTrackClips), ...get(textTrackClips)];
+        get(selectedClipIds).forEach(id => {
+            const c = allClips.find(i => i.id === id);
+            if (c) groupInitialOffsets[id] = c.startOffset;
+        });
 
         showGuide = true;
         window.addEventListener('mousemove', handleMoveClip);
@@ -293,24 +269,18 @@
         const deltaX = e.clientX - moveInitialX;
         const deltaSeconds = deltaX / pixelsPerSecond;
         
-        // 🔥 批次更新：所有選中的 Clip 都根據其初始位置 + delta 移動
-        // 使用 Math.max(0, ...) 確保不移出左邊界
-        // 這裡我們需要檢查整個群組是否有人撞牆 (Optional: 但簡單起見，各自撞牆即可)
-        
         const updateBatch = (clips) => clips.map(c => {
-            // 如果這個 clip 在被選中的群組裡
-            if (groupInitialOffsets[c.id] !== undefined) {
+            if ($selectedClipIds.includes(c.id) && groupInitialOffsets[c.id] !== undefined) {
                 const newStart = Math.max(0, groupInitialOffsets[c.id] + deltaSeconds);
                 return { ...c, startOffset: newStart };
             }
             return c;
         });
 
-        mainTrackClips.update(updateBatch);
-        audioTrackClips.update(updateBatch);
-        textTrackClips.update(updateBatch);
+        if (movingTrack === 'main') mainTrackClips.update(updateBatch);
+        else if (movingTrack === 'audio') audioTrackClips.update(updateBatch);
+        else if (movingTrack === 'text') textTrackClips.update(updateBatch);
 
-        // 更新指針和 Guide
         const currentStart = Math.max(0, moveInitialStart + deltaSeconds);
         currentTime.set(currentStart);
         guideX = e.clientX;
@@ -318,14 +288,12 @@
     }
 
     function stopMoveClip() {
-        // 移動結束後，對所有軌道執行重排
-        // 這裡不指定 activeId，讓它們自然落位
-        mainTrackClips.update(clips => resolveOverlaps(clips));
-        audioTrackClips.update(clips => resolveOverlaps(clips));
-        textTrackClips.update(clips => resolveOverlaps(clips));
+        const currentId = movingClipId;
+        if (movingTrack === 'main') mainTrackClips.update(clips => resolveOverlaps(clips, currentId));
+        else if (movingTrack === 'audio') audioTrackClips.update(clips => resolveOverlaps(clips, currentId));
+        else if (movingTrack === 'text') textTrackClips.update(clips => resolveOverlaps(clips, currentId));
 
-        movingClipId = null; movingTrack = null; showGuide = false;
-        groupInitialOffsets = {}; // 清空快照
+        movingClipId = null; movingTrack = null; showGuide = false; groupInitialOffsets = {};
         window.removeEventListener('mousemove', handleMoveClip);
         window.removeEventListener('mouseup', stopMoveClip);
     }
@@ -370,13 +338,11 @@
         const startTime = x / pixelsPerSecond;
         const endTime = (x + width) / pixelsPerSecond;
         
-        // Y 軸碰撞檢測
         const boxTop = y;
         const boxBottom = y + height;
         const isYOverlap = (track) => boxTop < track.bottom && boxBottom > track.top;
 
         const newSelected = [];
-
         if (isYOverlap(TRACK_BOUNDS.text)) {
             $textTrackClips.forEach(clip => {
                 if (clip.startOffset < endTime && (clip.startOffset + clip.duration) > startTime) newSelected.push(clip.id);
@@ -400,6 +366,52 @@
         selectBox = { x: 0, y: 0, width: 0, height: 0 };
         window.removeEventListener('mousemove', handleMarqueeMove);
         window.removeEventListener('mouseup', stopMarquee);
+    }
+
+    // --- Action: Draw Audio Waveform (Bar Chart Style) ---
+    function drawWaveform(canvas, clip) {
+        if (!canvas || !clip.waveform) return;
+        
+        // 確保 Canvas 解析度正確
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const data = clip.waveform;
+        
+        ctx.clearRect(0, 0, width, height);
+        
+        // 垂直漸變：橘(高) -> 黃 -> 綠(低)
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, '#fb923c');   
+        gradient.addColorStop(0.5, '#facc15'); 
+        gradient.addColorStop(1, '#4ade80');   
+        ctx.fillStyle = gradient;
+        
+        const barWidth = 4; 
+        const gap = 2;      
+        const step = barWidth + gap;
+        const totalBars = Math.floor(width / step);
+        const dataStep = data.length / totalBars;
+
+        for (let i = 0; i < totalBars; i++) {
+            const dataIndex = Math.floor(i * dataStep);
+            const value = data[dataIndex] || 0; 
+
+            let barHeight = value * height * 0.9;
+            if (barHeight < 1) barHeight = 2;
+
+            const x = i * step;
+            const y = height - barHeight; // 底部對齊
+            
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(x, y, barWidth, barHeight, [2, 2, 0, 0]);
+            else ctx.rect(x, y, barWidth, barHeight);
+            ctx.fill();
+        }
     }
 
     function handleTimelineMouseMove(e) { updateTimeFromEvent(e); }
@@ -434,6 +446,7 @@
     <div bind:this={scrollContainer} class="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar relative">
         <div bind:this={timelineContainer} class="relative h-full flex flex-col min-w-full" style="width: {totalDuration * pixelsPerSecond + 100}px;" on:mousedown={handleTimelineMouseDown}>
 
+            <!-- Ruler -->
             <div class="h-6 border-b border-gray-700 flex text-[10px] text-gray-500 bg-[#181818] sticky left-0 z-20 pointer-events-none">
                 <div class="w-24 border-r border-gray-700 shrink-0 bg-[#181818] sticky left-0 z-30"></div> 
                 <div class="flex-1 relative">
@@ -443,6 +456,7 @@
                 </div>
             </div>
 
+            <!-- Playhead -->
             <div class="absolute top-0 bottom-0 w-[1px] bg-cyan-400 z-40 pointer-events-none will-change-transform" style="left: 0; transform: translateX({96 + ($currentTime * pixelsPerSecond)}px) translateZ(0);">
                 <div class="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 -mt-1.5 rotate-45 bg-cyan-400 rounded-sm"></div>
             </div>
@@ -479,15 +493,27 @@
                     </div>
                     <div class="flex-1 relative h-full bg-[#151515] track-bg">
                         {#each $mainTrackClips as clip (clip.id)}
-                            <div class="absolute top-2 bottom-2 rounded overflow-hidden border bg-cyan-900/50 group/clip cursor-move { $selectedClipIds.includes(clip.id) ? 'border-white ring-1 ring-white z-10' : 'border-cyan-600' }" style="left: {clip.startOffset * pixelsPerSecond}px; width: {clip.duration * pixelsPerSecond}px;" title={clip.name} on:mousedown={(e) => startMoveClip(e, clip, 'main')} on:click={(e) => selectClip(e, clip.id)} on:contextmenu={(e) => handleContextMenu(e, clip.id)}>
+                            <div 
+                                class="absolute top-2 bottom-2 rounded overflow-hidden border bg-cyan-900/50 group/clip cursor-move { $selectedClipIds.includes(clip.id) ? 'border-white ring-1 ring-white z-10' : 'border-cyan-600' }" 
+                                style="left: {clip.startOffset * pixelsPerSecond}px; width: {clip.duration * pixelsPerSecond}px;" 
+                                title={clip.name} 
+                                on:mousedown={(e) => startMoveClip(e, clip, 'main')} 
+                                on:click={(e) => selectClip(e, clip.id)} 
+                                on:contextmenu={(e) => handleContextMenu(e, clip.id)}
+                            >
                                 {#if clip.thumbnailUrls && clip.thumbnailUrls.length > 0}
-                                    <div class="absolute top-0 bottom-0 flex overflow-hidden pointer-events-none select-none opacity-50 h-full" style="left: {clip.sourceDuration === Infinity ? 0 : -(clip.mediaStartOffset || 0) * pixelsPerSecond}px; width: {clip.sourceDuration === Infinity ? '100%' : (clip.sourceDuration * pixelsPerSecond) + 'px'};">
+                                    <div 
+                                        class="absolute top-0 bottom-0 flex overflow-hidden pointer-events-none select-none opacity-50 h-full" 
+                                        style="left: {clip.sourceDuration === Infinity ? 0 : -(clip.mediaStartOffset || 0) * pixelsPerSecond}px; width: {clip.sourceDuration === Infinity ? '100%' : (clip.sourceDuration * pixelsPerSecond) + 'px'};"
+                                    >
                                         {#each clip.thumbnailUrls as url}
-                                            <div class="flex-1 h-full min-w-0 border-r border-white/20 last:border-0"><img src={url} class="w-full h-full object-cover" alt="frame" draggable="false" /></div>
+                                            <div class="flex-1 h-full min-w-0 border-r border-white/20 last:border-0">
+                                                <img src={url} class="w-full h-full object-cover" alt="frame" draggable="false" />
+                                            </div>
                                         {/each}
                                     </div>
                                 {/if}
-                                <div class="w-full h-full flex items-center justify-center pointer-events-none relative z-10"><span class="text-[10px] text-white truncate px-1 drop-shadow-md font-medium">{clip.name} ({clip.duration.toFixed(1)}s)</span></div>
+                                <div class="w-full h-full flex items-center justify-center pointer-events-none relative z-10"><span class="text-[10px] text-white truncate px-1 drop-shadow-md font-medium">{clip.name}</span></div>
                                 <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-cyan-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'main', 'start')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
                                 <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-cyan-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'main', 'end')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
                             </div>
@@ -495,15 +521,29 @@
                     </div>
                 </div>
                 
-                <!-- Audio Track -->
+                <!-- Audio Track (Waveform Updated) -->
                 <div class="flex h-16 border-b border-gray-800 relative track-bg" on:dragover={handleDragOver} on:drop={handleAudioDrop}>
                      <div class="w-24 shrink-0 border-r border-gray-700 flex items-center pl-3 text-xs text-gray-400 bg-[#181818] z-30 sticky left-0 h-full">Audio</div>
                     <div class="flex-1 bg-[#151515] relative h-full track-bg">
                         {#each $audioTrackClips as clip (clip.id)}
-                            <div class="absolute top-2 bottom-2 rounded overflow-hidden border bg-green-900/50 group/clip cursor-move { $selectedClipIds.includes(clip.id) ? 'border-white ring-1 ring-white z-10' : 'border-green-600' }" style="left: {clip.startOffset * pixelsPerSecond}px; width: {clip.duration * pixelsPerSecond}px;" title={clip.name} on:mousedown={(e) => startMoveClip(e, clip, 'audio')} on:click={(e) => selectClip(e, clip.id)} on:contextmenu={(e) => handleContextMenu(e, clip.id)}>
-                                <div class="w-full h-full flex items-center justify-center pointer-events-none"><span class="text-[10px] text-white truncate px-1">🎵 {clip.name} ({clip.duration.toFixed(1)}s)</span></div>
-                                <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-green-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'start')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
-                                <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-green-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'end')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
+                            <div 
+                                class="absolute top-2 bottom-2 rounded-lg overflow-hidden border border-white/20 bg-gray-800/40 group/clip cursor-move { $selectedClipIds.includes(clip.id) ? 'border-white ring-1 ring-white z-10' : 'hover:border-white/40' }" 
+                                style="left: {clip.startOffset * pixelsPerSecond}px; width: {clip.duration * pixelsPerSecond}px;" 
+                                title={clip.name} 
+                                on:mousedown={(e) => startMoveClip(e, clip, 'audio')} 
+                                on:click={(e) => selectClip(e, clip.id)} 
+                                on:contextmenu={(e) => handleContextMenu(e, clip.id)}
+                            >
+                                <!-- Waveform Canvas -->
+                                {#if clip.waveform}
+                                    <canvas class="absolute inset-0 w-full h-full pointer-events-none opacity-80" use:drawWaveform={clip}></canvas>
+                                {/if}
+
+                                <div class="w-full h-full flex items-start justify-start pointer-events-none relative z-10 p-1">
+                                    <span class="text-[10px] text-white/80 truncate px-1.5 py-0.5 bg-black/30 rounded">🎵 {clip.name}</span>
+                                </div>
+                                <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-white/10 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'start')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
+                                <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-white/10 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'audio', 'end')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
                             </div>
                         {/each}
                     </div>
