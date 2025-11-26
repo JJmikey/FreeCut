@@ -477,10 +477,41 @@
                     <div class="w-24 shrink-0 border-r border-gray-700 flex items-center pl-3 text-xs text-gray-400 bg-[#181818] z-30 sticky left-0 h-full">Text</div>
                     <div class="flex-1 bg-[#151515] relative h-full track-bg">
                         {#each $textTrackClips as clip (clip.id)}
-                            <div class="absolute top-2 bottom-2 rounded overflow-hidden border border-orange-500 bg-orange-900/50 group/clip cursor-move { $selectedClipIds.includes(clip.id) ? 'border-white ring-1 ring-white z-10' : 'border-orange-500' }" style="left: {clip.startOffset * pixelsPerSecond}px; width: {clip.duration * pixelsPerSecond}px;" title={clip.name} on:mousedown={(e) => startMoveClip(e, clip, 'text')} on:click={(e) => selectClip(e, clip.id)} on:contextmenu={(e) => handleContextMenu(e, clip.id)}>
-                                <div class="w-full h-full flex items-center justify-center pointer-events-none"><span class="text-[10px] text-white truncate px-1">T {clip.text || 'Text'}</span></div>
-                                <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-orange-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'text', 'start')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
-                                <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-orange-400/50 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'text', 'end')} on:click|stopPropagation><div class="w-[2px] h-4 bg-white/50 rounded-full"></div></div>
+                            <!-- 
+                                🔥 美化 Text Clip：
+                                1. 背景: bg-purple-500/20 (半透明紫色)
+                                2. 邊框: border-purple-400/50 (柔和邊框)
+                                3. 圓角: rounded-lg (更圓潤)
+                                4. 互動: hover:bg-purple-500/30 (滑鼠移上去變亮)
+                                5. 選中狀態: ring-1 ring-purple-300
+                            -->
+                            <div 
+                                class="absolute top-2 bottom-2 rounded-lg overflow-hidden border backdrop-blur-sm transition-colors cursor-move 
+                                       { $selectedClipIds.includes(clip.id) 
+                                            ? 'border-purple-300 bg-purple-500/40 ring-1 ring-purple-300 z-20' 
+                                            : 'border-purple-500/30 bg-purple-900/20 hover:border-purple-400/60 hover:bg-purple-500/30' }" 
+                                style="left: {clip.startOffset * pixelsPerSecond}px; width: {clip.duration * pixelsPerSecond}px;" 
+                                title={clip.name} 
+                                on:mousedown={(e) => startMoveClip(e, clip, 'text')} 
+                                on:click={(e) => selectClip(e, clip.id)} 
+                                on:contextmenu={(e) => handleContextMenu(e, clip.id)}
+                            >
+                                <!-- 內容區 -->
+                                <div class="w-full h-full flex items-center px-2 gap-2 pointer-events-none">
+                                    <!-- Icon -->
+                                    <div class="w-4 h-4 rounded bg-purple-500/80 flex items-center justify-center shrink-0 shadow-sm">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14"/><path d="M12 7v14"/></svg>
+                                    </div>
+                                    
+                                    <!-- 文字 -->
+                                    <span class="text-[11px] text-purple-100 truncate font-medium tracking-wide drop-shadow-md">
+                                        {clip.text || 'New Text'}
+                                    </span>
+                                </div>
+
+                                <!-- Resize Handles (改為半透明白色，更有質感) -->
+                                <div class="absolute top-0 bottom-0 left-0 w-4 cursor-ew-resize z-50 hover:bg-white/10 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'text', 'start')} on:click|stopPropagation><div class="w-[2px] h-3 bg-white/40 rounded-full"></div></div>
+                                <div class="absolute top-0 bottom-0 right-0 w-4 cursor-ew-resize z-50 hover:bg-white/10 transition-colors flex items-center justify-center" on:mousedown={(e) => startResize(e, clip, 'text', 'end')} on:click|stopPropagation><div class="w-[2px] h-3 bg-white/40 rounded-full"></div></div>
                             </div>
                         {/each}
                     </div>
