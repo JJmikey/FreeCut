@@ -3,11 +3,16 @@
     import { mainTrackClips, audioTrackClips, textTrackClips, draggedFile, projectSettings } from '../stores/timelineStore';
     import { isExporting, startExportTrigger } from '../stores/exportStore';
     import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+    // 引入 GIF 解碼工具
+    import { decodeGifFrames } from '../utils/gifHelper';
     
     let videoRef;
     let audioRef; 
     let imageRef;
     let canvasRef;
+    
+    // 🔥 變數宣告 (包含 containerWidth)
+    let containerWidth = 0;
     let lastTime = 0;
     let exportProgress = 0;
     let exportStatus = "";
@@ -19,6 +24,10 @@
     
     $: contentDuration = Math.max(maxMain, maxAudio, maxText);
     $: hasClips = contentDuration > 0;
+
+    // 🔥 計算預覽縮放比例 (用於 CSS Transform)
+    // 防止除以 0
+    $: previewRatio = (containerWidth && $projectSettings?.width) ? (containerWidth / $projectSettings.width) : 1;
   
     // 監聽導出觸發
     $: if ($startExportTrigger > 0 && !$isExporting && hasClips) {
@@ -26,7 +35,7 @@
     }
   
     // ------------------------------------------------
-    // 極速導出流程 (WebCodecs + Chunking)
+    // 極速導出流程 (WebCodecs + Chunking + Transform + GIF)
     // ------------------------------------------------
     async function fastExportProcess() {
         try {
@@ -38,7 +47,6 @@
             exportProgress = 0;
             exportStatus = "Initializing...";
 
-            // 使用專案設定的寬高
             const width = $projectSettings.width;
             const height = $projectSettings.height;
             const fps = 30;
@@ -70,9 +78,21 @@
             // 3. Video Encoder
             const videoEncoder = new VideoEncoder({
                 output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-                error: (e) => { throw e; }
+                error: (e) => { 
+                    console.error("Video Encoder Error:", e);
+                    throw e;
+                }
             });
-            await videoEncoder.configure({ codec: 'avc1.42001f', width, height, bitrate: 5_000_000, framerate: fps });
+
+            // Codec Level 4.2 支援 1080p+
+            const videoConfig = {
+                codec: 'avc1.4d002a', 
+                width, height, bitrate: 8_000_000, framerate: fps
+            };
+            const vSupport = await VideoEncoder.isConfigSupported(videoConfig);
+            if (!vSupport.supported) videoConfig.codec = 'avc1.42002a'; 
+            
+            await videoEncoder.configure(videoConfig);
 
             // 4. Audio Encoder
             if (aSupport.supported) {
@@ -109,13 +129,28 @@
                 await audioEncoder.flush();
             }
 
-            // 5. Rendering Video & Text
+            // 5. GIF Pre-processing
+            exportStatus = "Decoding GIFs...";
+            const gifCache = {}; 
+            const imageClips = $mainTrackClips.filter(c => c.type === 'image/gif');
+            for (const clip of imageClips) {
+                try {
+                    const decoded = await decodeGifFrames(clip.fileUrl);
+                    gifCache[clip.id] = decoded;
+                } catch (e) {
+                    console.error("GIF Decode Failed:", clip.name, e);
+                }
+            }
+
+            // 6. Rendering Loop
             exportStatus = "Rendering Video...";
             const ctx = canvasRef.getContext('2d', { willReadFrequently: true });
             canvasRef.width = width;
             canvasRef.height = height;
 
             for (let i = 0; i < totalFrames; i++) {
+                if (videoEncoder.state === 'closed') throw new Error("Video Encoder crashed.");
+
                 const timeInSeconds = i / fps;
                 const timestampMicros = i * (1_000_000 / fps);
                 exportProgress = Math.round((i / totalFrames) * 100);
@@ -127,12 +162,25 @@
                 ctx.fillStyle = '#000'; 
                 ctx.fillRect(0, 0, width, height);
 
-                // 繪製影像 (支援 Transform)
+                // 繪製影像 (Video / Image / GIF)
                 if (activeClip) {
                     let sourceElement = null;
                     let sw, sh;
 
-                    if (activeClip.type.startsWith('video')) {
+                    // GIF 處理
+                    if (activeClip.type === 'image/gif' && gifCache[activeClip.id]) {
+                        const gifData = gifCache[activeClip.id];
+                        const clipInternalTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
+                        const loopTime = clipInternalTime % gifData.totalDuration;
+                        const frameObj = gifData.frames.find(f => loopTime >= f.startTime && loopTime < (f.startTime + f.duration));
+                        if (frameObj) {
+                            sourceElement = frameObj.image;
+                            sw = sourceElement.displayWidth;
+                            sh = sourceElement.displayHeight;
+                        }
+                    }
+                    // Video 處理
+                    else if (activeClip.type.startsWith('video')) {
                         sourceElement = videoRef;
                         if (!videoRef.src.includes(activeClip.fileUrl)) {
                             videoRef.src = activeClip.fileUrl;
@@ -145,7 +193,9 @@
                             videoRef.addEventListener('seeked', onSeeked); videoRef.currentTime = seekTime;
                         });
                         sw = videoRef.videoWidth; sh = videoRef.videoHeight;
-                    } else if (activeClip.type.startsWith('image')) {
+                    } 
+                    // Image 處理
+                    else if (activeClip.type.startsWith('image')) {
                         sourceElement = imageRef;
                         if (!imageRef.src.includes(activeClip.fileUrl)) {
                             imageRef.src = activeClip.fileUrl;
@@ -156,13 +206,12 @@
                         sw = imageRef.naturalWidth; sh = imageRef.naturalHeight;
                     }
 
+                    // 統一繪圖 (含 Transform)
                     if (sourceElement && sw && sh) {
-                        // 1. Fit Ratio
                         const r = Math.min(width / sw, height / sh);
                         const dw = sw * r;
                         const dh = sh * r;
 
-                        // 2. Transform
                         const scale = activeClip.scale || 1.0;
                         const posX = activeClip.positionX || 0;
                         const posY = activeClip.positionY || 0;
@@ -175,7 +224,7 @@
                     }
                 }
 
-                // 繪製文字 (支援背景與描邊)
+                // 繪製文字 (Render Layer - 修正順序)
                 if (activeText) {
                     ctx.font = `${activeText.fontWeight || 'bold'} ${activeText.fontSize}px ${activeText.fontFamily || 'Arial, sans-serif'}`;
                     ctx.textAlign = 'center';
@@ -185,26 +234,21 @@
                     const y = (activeText.y / 100) * height;
                     const padding = 10;
 
-                    // 背景
                     if (activeText.showBackground) {
                         const metrics = ctx.measureText(activeText.text);
                         const textWidth = metrics.width;
                         const textHeight = activeText.fontSize;
-                        
                         ctx.fillStyle = activeText.backgroundColor;
                         ctx.fillRect(x - textWidth/2 - padding, y - textHeight/2 - padding, textWidth + padding*2, textHeight + padding*2);
                     }
 
-                    // 描邊 (Stroke First)
                     if (activeText.strokeWidth > 0) {
-                        ctx.lineJoin = 'round'; 
-                        ctx.miterLimit = 2;
+                        ctx.lineJoin = 'round'; ctx.miterLimit = 2;
                         ctx.lineWidth = activeText.strokeWidth;
                         ctx.strokeStyle = activeText.strokeColor;
                         ctx.strokeText(activeText.text, x, y);
                     }
 
-                    // 本體 (Fill Second)
                     ctx.fillStyle = activeText.color;
                     ctx.fillText(activeText.text, x, y);
                 }
@@ -214,6 +258,11 @@
                 videoEncoder.encode(frame, { keyFrame });
                 frame.close();
             }
+            
+            // 清理 GIF Cache
+            Object.values(gifCache).forEach(data => {
+                data.frames.forEach(f => f.image.close());
+            });
 
             await videoEncoder.flush();
             muxer.finalize();
@@ -241,7 +290,6 @@
         const promises = clips.map(async (clip) => {
             try {
                 if (clip.type.startsWith('image') || clip.type === 'text') return; 
-
                 const response = await fetch(clip.fileUrl);
                 const arrayBuffer = await response.arrayBuffer();
                 const tempCtx = new AudioContext();
@@ -253,7 +301,6 @@
                 gainNode.gain.value = clip.volume !== undefined ? clip.volume : 1.0;
                 source.connect(gainNode);
                 gainNode.connect(offlineCtx.destination);
-                
                 const offset = clip.mediaStartOffset || 0;
                 source.start(clip.startOffset, offset, clip.duration);
             } catch (e) { }
@@ -291,6 +338,7 @@
                     if (!videoRef.src.includes(activeClip.fileUrl)) videoRef.src = activeClip.fileUrl;
                     videoRef.volume = activeClip.volume !== undefined ? activeClip.volume : 1.0;
                     const seekTime = ($currentTime - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
+                    
                     if (!$isPlaying || Math.abs(videoRef.currentTime - seekTime) > 0.25) {
                         videoRef.currentTime = seekTime;
                     }
@@ -310,6 +358,7 @@
             if (!audioRef.src.includes(activeAudioClip.fileUrl)) audioRef.src = activeAudioClip.fileUrl;
             audioRef.volume = activeAudioClip.volume !== undefined ? activeAudioClip.volume : 1.0;
             const audioSeekTime = ($currentTime - activeAudioClip.startOffset) + (activeAudioClip.mediaStartOffset || 0);
+            
             if (!$isPlaying || Math.abs(audioRef.currentTime - audioSeekTime) > 0.25) {
                 audioRef.currentTime = audioSeekTime;
             }
@@ -337,7 +386,7 @@
         }
     }
 
-    // 4. Play/Pause Control
+    // 4. Play/Pause Control (Decoupled)
     $: if (!$isExporting) {
         if ($isPlaying && !isSourceMode) {
             if (videoRef && activeClip && activeClip.type.startsWith('video')) videoRef.play().catch(() => {});
@@ -409,13 +458,14 @@
         draggable="true"
         on:dragstart={handleDragStart}
         on:click={togglePlay}
+        bind:clientWidth={containerWidth}
     >
         <!-- Video Element (with Transform) -->
         <video 
             bind:this={videoRef} 
             class="max-w-full max-h-full object-contain pointer-events-none 
                    {(isSourceMode && $currentVideoSource.type.startsWith('video')) || (!isSourceMode && activeClip && activeClip.type.startsWith('video')) ? 'block' : 'hidden'}" 
-            style={!isSourceMode && activeClip ? `transform: translate(${activeClip.positionX || 0}px, ${activeClip.positionY || 0}px) scale(${activeClip.scale || 1}); transform-origin: center;` : ''}
+            style={!isSourceMode && activeClip ? `transform: translate(${(activeClip.positionX || 0) * previewRatio}px, ${(activeClip.positionY || 0) * previewRatio}px) scale(${activeClip.scale || 1}); transform-origin: center;` : ''}
             muted={false} 
             crossorigin="anonymous"
         ></video>
@@ -425,7 +475,7 @@
             bind:this={imageRef}
             class="max-w-full max-h-full object-contain pointer-events-none 
                    {(isSourceMode && $currentVideoSource.type.startsWith('image')) || (!isSourceMode && activeClip && activeClip.type.startsWith('image')) ? 'block' : 'hidden'}"
-            style={!isSourceMode && activeClip ? `transform: translate(${activeClip.positionX || 0}px, ${activeClip.positionY || 0}px) scale(${activeClip.scale || 1}); transform-origin: center;` : ''}
+            style={!isSourceMode && activeClip ? `transform: translate(${(activeClip.positionX || 0) * previewRatio}px, ${(activeClip.positionY || 0) * previewRatio}px) scale(${activeClip.scale || 1}); transform-origin: center;` : ''}
             alt="preview"
         />
 
@@ -434,7 +484,7 @@
             <div class="flex flex-col items-center gap-4 text-green-400 animate-pulse"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span class="text-sm font-mono">Previewing Audio...</span></div>
         {/if}
         
-        <!-- 🔥 Text Layer (With Styling) -->
+        <!-- Text Layer (With Styling) -->
         {#if !isSourceMode && activeTextClip}
             <div 
                 class="absolute pointer-events-none text-center select-none"
@@ -458,7 +508,7 @@
             </div>
         {/if}
 
-        <!-- 🔥 Overlays (Exit Preview Button ONLY in Source Mode) -->
+        <!-- Overlays -->
         {#if isSourceMode}
              <div class="absolute top-4 left-4 z-20">
                 <button 
@@ -475,7 +525,9 @@
         {#if !activeClip && !isSourceMode && !activeTextClip}
             <div class="flex flex-col items-center gap-4 opacity-20 text-white absolute pointer-events-none"><span class="text-sm">{!hasClips ? 'Drag media to start' : 'Black Screen'}</span></div>
         {/if}
-      
+        {#if !$isPlaying && hasClips && !$isExporting}
+            <div class="absolute z-50 bg-black/50 p-4 rounded-full backdrop-blur-sm pointer-events-none"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+        {/if}
         {#if $isExporting}
             <div class="absolute z-50 bg-black/90 px-8 py-6 rounded-xl flex flex-col items-center gap-4 shadow-2xl border border-gray-800">
                 <div class="relative w-12 h-12"><div class="absolute inset-0 border-4 border-gray-700 rounded-full"></div><div class="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>
