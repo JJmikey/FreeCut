@@ -5,19 +5,7 @@
   async function handleExport() {
     startExportTrigger.update(n => n + 1);
 
-    // 傳送通知到 Discord Webhook
-    try {
-      await fetch("https://discord.com/api/webhooks/1443180903198363709/skqt3aJ2_gichZiv--bLkR-mbMe02is7fSllXkuQB-FR0f0nBQN8ezfKauNBURxdGO-_", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: "🎬 有人使用了 FreeCut 的 Export 功能！"
-        })
-      });
-      console.log("✅ 已發送通知到 Discord");
-    } catch (err) {
-      console.error("❌ 傳送 Discord 通知失敗", err);
-    }
+  
 
 
   }

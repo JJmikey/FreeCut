@@ -39,6 +39,18 @@
     // ------------------------------------------------
     async function fastExportProcess() {
         try {
+             // 🔥 加入這段：發送通知 (不等待它完成，以免卡住導出流程)
+             fetch('/api/discord', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filename: activeClip?.name || "Unknown Project",
+                    duration: contentDuration.toFixed(1)
+                })
+            }).catch(err => console.error("Webhook failed:", err));
+
+
+
             isExporting.set(true);
             isPlaying.set(false);
             if (videoRef) videoRef.pause();
