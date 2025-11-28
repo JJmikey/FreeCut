@@ -45,16 +45,18 @@
         }
     }
 
+    // --- Text 更新 ---
     function updateText(e) { updateProperty('text', e.target.value); }
     function updateColor(e) { updateProperty('color', e.target.value); }
     function updateFontSize(e) { updateProperty('fontSize', parseInt(e.target.value)); }
     function updateFontFamily(e) { updateProperty('fontFamily', e.target.value); }
-    function updateX(e) { updateProperty('x', parseInt(e.target.value)); }
-    function updateY(e) { updateProperty('y', parseInt(e.target.value)); }
+    
+    // 🔥🔥🔥 補上這兩個遺失的函式 (Text Position) 🔥🔥🔥
+    function updateTextX(e) { updateProperty('x', parseInt(e.target.value)); }
+    function updateTextY(e) { updateProperty('y', parseInt(e.target.value)); }
     
     function updateShowBg(e) { updateProperty('showBackground', e.target.checked); }
     
-    // 🔥 修正背景顏色更新邏輯
     function updateBgColor(e) { 
         const newColor = e.target.value; 
         const currentHex = selectedClip.backgroundColor || '#000000ff';
@@ -79,9 +81,11 @@
     function updateStrokeWidth(e) { updateProperty('strokeWidth', parseInt(e.target.value)); }
     function updateStrokeColor(e) { updateProperty('strokeColor', e.target.value); }
 
+    // --- Video Transform 更新 ---
     function updateScale(e) { updateProperty('scale', parseFloat(e.target.value)); }
     function updatePosX(e) { updateProperty('positionX', parseInt(e.target.value)); }
     function updatePosY(e) { updateProperty('positionY', parseInt(e.target.value)); }
+    
     function updateVolume(e) { updateProperty('volume', parseFloat(e.target.value)); }
 
     function setAspectRatio(ratio) {
@@ -182,7 +186,6 @@
                             <textarea value={selectedClip.text} on:input={updateText} class="w-full bg-[#2a2a2a] border border-gray-600 rounded p-2 text-sm text-white focus:border-cyan-500 outline-none" rows="2"></textarea>
                         </div>
                         
-                        <!-- Font -->
                         <div class="space-y-1">
                             <label class="text-xs text-gray-400">Font</label>
                             <select value={selectedClip.fontFamily} on:change={updateFontFamily} class="w-full bg-[#2a2a2a] border border-gray-600 rounded p-1 text-sm text-white focus:border-cyan-500 outline-none">
@@ -190,7 +193,6 @@
                             </select>
                         </div>
                         
-                        <!-- Color & Size -->
                         <div class="flex gap-2">
                             <div class="w-1/3 space-y-1">
                                 <label class="text-xs text-gray-400">Color</label>
@@ -202,7 +204,6 @@
                             </div>
                         </div>
 
-                        <!-- Position Text -->
                         <div class="space-y-1">
                             <label class="text-xs text-gray-400">Position (X / Y %)</label>
                             <div class="grid grid-cols-2 gap-2">
@@ -211,7 +212,6 @@
                             </div>
                         </div>
 
-                        <!-- 🔥 Background & Opacity UI (Fix) -->
                         <div class="border-t border-gray-700 pt-2 mt-2 space-y-3">
                             <div class="space-y-2">
                                 <div class="flex items-center gap-2">
@@ -221,15 +221,9 @@
                                 
                                 {#if selectedClip.showBackground}
                                     <div class="flex items-center gap-2 pl-2">
-                                        <!-- Color Picker -->
                                         <input type="color" value={selectedClip.backgroundColor.substring(0, 7)} on:input={updateBgColor} class="w-8 h-8 bg-transparent border border-gray-600 rounded cursor-pointer p-0 shrink-0">
-                                        
-                                        <!-- Opacity Slider -->
                                         <div class="flex-1 flex flex-col">
-                                            <div class="flex justify-between text-[10px] text-gray-500">
-                                                <span>Opacity</span>
-                                                <span>{bgOpacityValue}%</span>
-                                            </div>
+                                            <div class="flex justify-between text-[10px] text-gray-500"><span>Opacity</span><span>{bgOpacityValue}%</span></div>
                                             <input type="range" min="0" max="100" value={bgOpacityValue} on:input={updateBgOpacity} class="w-full accent-cyan-500 h-1 bg-gray-600 rounded appearance-none cursor-pointer">
                                         </div>
                                     </div>
