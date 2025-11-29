@@ -114,7 +114,7 @@
 
             const textClip = createTextClip(0);
             textClip.text = "✨FastVideoCutter";
-            textClip.duration = 5;
+            textClip.duration = 3;
             textClip.fontSize = 28;
             textClip.x = 90;
             textClip.y = 85;
@@ -123,16 +123,12 @@
             textClip.backgroundColor = '#00000080';
             textTrackClips.update(clips => [textClip]);
 
-            // 🔥🔥🔥 修復：發送 Sample 通知 🔥🔥🔥
+            // Sample Webhook
             if (typeof window !== 'undefined') {
                 fetch('/api/discord', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: 'sample',
-                        filename: 'Demo Project',
-                        duration: '10'
-                    })
+                    body: JSON.stringify({ type: 'sample', filename: 'Demo Project', duration: '10' })
                 }).catch(e => console.warn("Sample webhook failed", e));
             }
 
@@ -149,7 +145,7 @@
         e.preventDefault();
         if ($isExporting) return;
 
-        // Internal
+        // Internal Drop
         const jsonString = e.dataTransfer.getData('application/json');
         if (jsonString) {
             try {
@@ -165,7 +161,7 @@
             } catch (err) { console.error("Internal drop failed", err); }
         }
 
-        // External
+        // External Drop
         const files = Array.from(e.dataTransfer.files);
         if (files.length === 0) return;
 
@@ -221,6 +217,9 @@
 
     // --- Export Logic ---
     async function fastExportProcess() {
+        // 宣告 activeClip 變數供 catch 區塊使用
+        let currentProcessingClip = null;
+
         try {
             isExporting.set(true);
             isPlaying.set(false);
@@ -326,6 +325,9 @@
 
                 const activeClip = $mainTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
                 const activeText = $textTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
+                
+                // 更新當前處理的 clip 以供錯誤回報
+                currentProcessingClip = activeClip;
 
                 ctx.fillStyle = '#000'; 
                 ctx.fillRect(0, 0, width, height);
@@ -352,7 +354,6 @@
                             await new Promise(r => videoRef.onloadedmetadata = r);
                         }
                         const seekTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
-                        
                         await new Promise((resolve) => {
                             const onSeeked = () => { videoRef.removeEventListener('seeked', onSeeked); resolve(); };
                             videoRef.addEventListener('seeked', onSeeked); videoRef.currentTime = seekTime;
@@ -439,7 +440,6 @@
 
             // 🔥🔥🔥 GA4 & Discord Notification 🔥🔥🔥
             if (typeof window !== 'undefined') {
-                // 1. Google Analytics Event
                 if (window.gtag) {
                     window.gtag('event', 'video_export', {
                         'event_category': 'engagement',
@@ -448,33 +448,30 @@
                     });
                 }
 
-                // 2. Discord Webhook (含 type: export)
                 fetch('/api/discord', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        type: 'export', 
-                        filename: activeClip?.name || 'Mixed Project', 
-                        duration: durationInSeconds.toFixed(1) 
-                    })
+                    body: JSON.stringify({ type: 'export', filename: 'Exported Video', duration: durationInSeconds.toFixed(1) })
                 }).catch(e => console.warn("Webhook failed", e));
             }
 
         } catch (err) {
             console.error(err);
             alert(`Export Failed: ${err.message}`);
-              // 🔥 新增：發送錯誤報告到 Discord
-              if (typeof window !== 'undefined') {
+            
+            // 🔥 Discord Error Notification
+            if (typeof window !== 'undefined') {
                 fetch('/api/discord', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                        type: 'error', // 記得去 API 支援這個 type (紅色)
-                        filename: activeClip?.name || "Unknown",
+                        type: 'error', 
+                        filename: currentProcessingClip?.name || "Unknown",
                         errorMessage: err.message
                     })
                 }).catch(e => console.warn("Error webhook failed"));
             }
+
             isExporting.set(false);
             startExportTrigger.set(0);
         }
@@ -526,7 +523,7 @@
     $: activeAudioClip = $audioTrackClips.find(clip => $currentTime >= clip.startOffset && $currentTime < (clip.startOffset + clip.duration));
     $: activeTextClip = $textTrackClips.find(clip => $currentTime >= clip.startOffset && $currentTime < (clip.startOffset + clip.duration));
 
-    // 1. Sync Video / Image
+    // Sync Video / Image
     $: if (!$isExporting && !isSourceMode) {
         if (activeClip) {
             if (activeClip.type.startsWith('video')) {
@@ -547,7 +544,7 @@
         }
     }
 
-    // 2. Sync Audio
+    // Sync Audio
     $: if (!$isExporting && !isSourceMode) {
         if (activeAudioClip && audioRef) {
             if (!audioRef.src.includes(activeAudioClip.fileUrl)) audioRef.src = activeAudioClip.fileUrl;
@@ -561,7 +558,7 @@
         }
     }
 
-    // 3. Source Preview Mode
+    // Source Preview Mode
     $: if (isSourceMode && !$isExporting) {
         const src = $currentVideoSource;
         if (src.type.startsWith('video')) {
@@ -580,7 +577,7 @@
         }
     }
 
-    // 4. Play/Pause Control
+    // Play/Pause Control
     $: if (!$isExporting) {
         if ($isPlaying && !isSourceMode) {
             if (videoRef && activeClip && activeClip.type.startsWith('video')) videoRef.play().catch(() => {});
@@ -593,7 +590,7 @@
         }
     }
 
-    // 5. Loop Logic
+    // Loop Logic
     $: if ($isPlaying && !$isExporting && !isSourceMode) {
         lastTime = performance.now();
         requestAnimationFrame(loop);
