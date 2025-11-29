@@ -112,25 +112,21 @@
             audioTrackClips.update(clips => [audioClip]);
 
             const textClip = createTextClip(0);
-            textClip.text = "✨FastVideoCutter"; // 多行測試
-            textClip.duration = 3;
-            textClip.fontSize = 40;
-            textClip.x = 85;
+            textClip.text = "Welcome to FastVideoCutter";
+            textClip.duration = 5;
+            textClip.fontSize = 28;
+            textClip.x = 75;
             textClip.y = 85;
             textClip.color = '#ffffff';
             textClip.showBackground = true;
-            textClip.backgroundColor = '#00000080';
+            textClip.backgroundColor = '#0ea5e9cc';
             textTrackClips.update(clips => [textClip]);
 
             if (typeof window !== 'undefined') {
                 fetch('/api/discord', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: 'sample',
-                        filename: 'Demo Project',
-                        duration: '10'
-                    })
+                    body: JSON.stringify({ type: 'sample', filename: 'Demo Project', duration: '10' })
                 }).catch(e => console.warn("Sample webhook failed", e));
             }
 
@@ -169,7 +165,7 @@
 
         try {
             const processedPromises = files.map(async (file) => {
-                if (file.size > 2 * 1024 * 1024 * 1024) { alert(`File too large: ${file.name}`); return null; }
+                if (file.size > 2 * 1024 * 1024 * 1024) { alert(`File too large`); return null; }
                 const url = URL.createObjectURL(file);
                 const duration = await getMediaDuration(file, url);
                 if (duration === null) return null;
@@ -348,7 +344,6 @@
                             await new Promise(r => videoRef.onloadedmetadata = r);
                         }
                         const seekTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
-                        
                         await new Promise((resolve) => {
                             const onSeeked = () => { videoRef.removeEventListener('seeked', onSeeked); resolve(); };
                             videoRef.addEventListener('seeked', onSeeked); videoRef.currentTime = seekTime;
@@ -370,6 +365,7 @@
                         const r = Math.min(width / sw, height / sh);
                         const dw = sw * r;
                         const dh = sh * r;
+
                         const scale = activeClip.scale || 1.0;
                         const posX = activeClip.positionX || 0;
                         const posY = activeClip.positionY || 0;
@@ -382,7 +378,7 @@
                     }
                 }
 
-                // 🔥🔥🔥 關鍵修正：多行文字繪製邏輯 (Multiline Text) 🔥🔥🔥
+                // 🔥🔥🔥 關鍵修改：多行文字 + 嚴格對齊 (Export) 🔥🔥🔥
                 if (activeText) {
                     ctx.font = `${activeText.fontWeight || 'bold'} ${activeText.fontSize}px ${activeText.fontFamily || 'Arial, sans-serif'}`;
                     ctx.textAlign = 'center';
@@ -390,32 +386,37 @@
                     
                     const x = (activeText.x / 100) * width;
                     const y = (activeText.y / 100) * height;
-                    const padding = 20; // 導出時稍微加大一點 padding
+                    
+                    // 使用固定的 Padding 邏輯，與 Preview 的 10px/20px 對齊
+                    // 注意：Preview 是用了 previewRatio 縮放，這裡用原始值即可
+                    const paddingX = 20;
+                    const paddingY = 10;
 
-                    // 1. 處理換行
+                    // 1. 分割多行
                     const lines = activeText.text.split('\n');
-                    const lineHeight = activeText.fontSize * 1.2; // 行高 1.2倍
+                    // 設定行高：1.2 是標準值，對應 CSS line-height: 1.2
+                    const lineHeight = activeText.fontSize * 1.2;
                     const totalTextHeight = lines.length * lineHeight;
                     
-                    // 2. 計算背景最寬的一行 (用於畫背景)
+                    // 2. 計算最寬的一行 (為了背景)
                     let maxLineWidth = 0;
                     lines.forEach(line => {
                         const w = ctx.measureText(line).width;
                         if (w > maxLineWidth) maxLineWidth = w;
                     });
 
-                    // 3. 畫背景 (如果有的話)
+                    // 3. 畫背景
                     if (activeText.showBackground) {
                         ctx.fillStyle = activeText.backgroundColor;
                         ctx.fillRect(
-                            x - maxLineWidth / 2 - padding, 
-                            y - totalTextHeight / 2 - padding, // 垂直置中背景
-                            maxLineWidth + padding * 2, 
-                            totalTextHeight + padding * 2
+                            x - maxLineWidth / 2 - paddingX, 
+                            y - totalTextHeight / 2 - paddingY, // 垂直置中計算
+                            maxLineWidth + paddingX * 2, 
+                            totalTextHeight + paddingY * 2
                         );
                     }
 
-                    // 4. 設定描邊樣式
+                    // 4. 設定描邊
                     if (activeText.strokeWidth > 0) {
                         ctx.lineJoin = 'round'; 
                         ctx.miterLimit = 2;
@@ -424,8 +425,8 @@
                     }
                     ctx.fillStyle = activeText.color;
 
-                    // 5. 逐行繪製 (垂直置中修正)
-                    // 起始 Y = 中心 Y - 總高度一半 + 第一行的一半 (因為 textBaseline=middle)
+                    // 5. 逐行繪製
+                    // 起始 Y 座標 = 中心 Y - 總高度一半 + 第一行的一半 (修正 Baseline)
                     let currentY = y - (totalTextHeight / 2) + (lineHeight / 2);
 
                     lines.forEach(line => {
@@ -683,20 +684,23 @@
             <div class="flex flex-col items-center gap-4 text-green-400 animate-pulse"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span class="text-sm font-mono">Previewing Audio...</span></div>
         {/if}
         
-        <!-- 🔥 Text Layer (Scaled & Styled) -->
+        <!-- 🔥🔥🔥 修正：文字預覽層 (禁止自動換行，使用 <pre>) 🔥🔥🔥 -->
         {#if !isSourceMode && activeTextClip}
             <div 
-                class="absolute pointer-events-none text-center select-none"
+                class="absolute pointer-events-none text-center select-none whitespace-pre"
                 style="
                     top: {activeTextClip.y}%; 
                     left: {activeTextClip.x}%; 
                     transform: translate(-50%, -50%);
                     
+                    /* 縮放字體 */
                     font-size: {activeTextClip.fontSize * previewRatio}px;
                     color: {activeTextClip.color};
                     font-family: {activeTextClip.fontFamily || 'Arial, sans-serif'};
                     font-weight: {activeTextClip.fontWeight || 'bold'};
-                    white-space: pre-wrap;
+                    
+                    /* 🔥 強制行高 1.2 (與 Canvas 一致) */
+                    line-height: 1.2;
                     
                     paint-order: stroke fill;
                     -webkit-text-stroke: {activeTextClip.strokeWidth * previewRatio}px {activeTextClip.strokeColor};
@@ -704,9 +708,6 @@
                     background-color: {activeTextClip.showBackground ? activeTextClip.backgroundColor : 'transparent'};
                     padding: {activeTextClip.showBackground ? `${10 * previewRatio}px ${20 * previewRatio}px` : '0'};
                     border-radius: {8 * previewRatio}px;
-                    
-                    /* 🔥 解決 Preview 時文字行高不一致問題 */
-                    line-height: 1.2; 
                 "
             >
                 {activeTextClip.text}
