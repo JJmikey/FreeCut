@@ -38,6 +38,11 @@ export const POST = async (context) => {
             title = "error";
             color = 15158332; // 灰色
             break;
+         // 🔥 新增：開始導出
+         case 'export_start':
+          title = "⏳ Export Started..."; // 進行中 (黃色)
+          color = 16776960; 
+          break;
     }
 
     // 構建 Fields

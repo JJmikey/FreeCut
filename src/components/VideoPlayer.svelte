@@ -21,7 +21,7 @@
     let exportStatus = "";
     let isProcessingDrag = false;
 
-    // 計算長度
+    // 計算總長度
     $: maxMain = $mainTrackClips.length > 0 ? Math.max(...$mainTrackClips.map(c => c.startOffset + c.duration)) : 0;
     $: maxAudio = $audioTrackClips.length > 0 ? Math.max(...$audioTrackClips.map(c => c.startOffset + c.duration)) : 0;
     $: maxText = $textTrackClips.length > 0 ? Math.max(...$textTrackClips.map(c => c.startOffset + c.duration)) : 0;
@@ -30,6 +30,7 @@
     $: hasClips = contentDuration > 0;
     $: previewRatio = (containerWidth && $projectSettings?.width) ? (containerWidth / $projectSettings.width) : 1;
   
+    // 監聽導出觸發
     $: if ($startExportTrigger > 0 && !$isExporting && hasClips) {
         fastExportProcess();
     }
@@ -115,7 +116,7 @@
             textClip.text = "Welcome to FastVideoCutter";
             textClip.duration = 5;
             textClip.fontSize = 28;
-            textClip.x = 75;
+            textClip.x = 80;
             textClip.y = 85;
             textClip.color = '#ffffff';
             textClip.showBackground = true;
@@ -143,6 +144,7 @@
         e.preventDefault();
         if ($isExporting) return;
 
+        // Internal
         const jsonString = e.dataTransfer.getData('application/json');
         if (jsonString) {
             try {
@@ -158,6 +160,7 @@
             } catch (err) { console.error("Internal drop failed", err); }
         }
 
+        // External
         const files = Array.from(e.dataTransfer.files);
         if (files.length === 0) return;
 
@@ -165,7 +168,7 @@
 
         try {
             const processedPromises = files.map(async (file) => {
-                if (file.size > 2 * 1024 * 1024 * 1024) { alert(`File too large`); return null; }
+                if (file.size > 2 * 1024 * 1024 * 1024) { alert(`File too large: ${file.name}`); return null; }
                 const url = URL.createObjectURL(file);
                 const duration = await getMediaDuration(file, url);
                 if (duration === null) return null;
@@ -211,8 +214,20 @@
         if (input) input.click();
     }
 
-    // --- Export Logic ---
+    // ------------------------------------------------
+    // 🔥🔥🔥 Export Logic (Updated with Start Notification & Prevent Close) 🔥🔥🔥
+    // ------------------------------------------------
     async function fastExportProcess() {
+        // 防止關閉分頁
+        const preventClose = (e) => {
+            e.preventDefault();
+            e.returnValue = ''; 
+        };
+        window.addEventListener('beforeunload', preventClose);
+
+        // 宣告變數供 catch 使用
+        let currentProcessingClip = null;
+
         try {
             isExporting.set(true);
             isPlaying.set(false);
@@ -222,12 +237,26 @@
             exportProgress = 0;
             exportStatus = "Initializing...";
 
+            // 🔥 發送 Export Start 通知
+            if (typeof window !== 'undefined') {
+                fetch('/api/discord', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        type: 'export_start', 
+                        filename: 'Exporting...', 
+                        duration: contentDuration.toFixed(1) 
+                    })
+                }).catch(e => console.warn("Start webhook failed"));
+            }
+
             const width = $projectSettings.width;
             const height = $projectSettings.height;
             const fps = 30;
             const durationInSeconds = contentDuration; 
             const totalFrames = Math.ceil(durationInSeconds * fps);
             
+            // 1. Audio Config
             let audioConfig = { codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, bitrate: 128_000 };
             let aSupport = await AudioEncoder.isConfigSupported(audioConfig);
             if (!aSupport.supported) {
@@ -235,6 +264,7 @@
                 aSupport = await AudioEncoder.isConfigSupported(audioConfig);
             }
 
+            // 2. Muxer
             const muxer = new Muxer({
                 target: new ArrayBufferTarget(),
                 video: { codec: 'avc', width, height },
@@ -246,6 +276,7 @@
                 fastStart: false 
             });
 
+            // 3. Video Encoder
             const videoEncoder = new VideoEncoder({
                 output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
                 error: (e) => { throw e; }
@@ -257,6 +288,7 @@
             
             await videoEncoder.configure(videoConfig);
 
+            // 4. Audio Processing
             if (aSupport.supported) {
                 exportStatus = "Processing Audio...";
                 const audioEncoder = new AudioEncoder({
@@ -291,6 +323,7 @@
                 await audioEncoder.flush();
             }
 
+            // 5. GIF Pre-processing
             exportStatus = "Decoding GIFs...";
             const gifCache = {}; 
             const imageClips = $mainTrackClips.filter(c => c.type === 'image/gif');
@@ -303,6 +336,7 @@
                 }
             }
 
+            // 6. Video Rendering
             exportStatus = "Rendering Video...";
             const ctx = canvasRef.getContext('2d', { willReadFrequently: true });
             canvasRef.width = width;
@@ -318,6 +352,7 @@
 
                 const activeClip = $mainTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
                 const activeText = $textTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
+                currentProcessingClip = activeClip;
 
                 ctx.fillStyle = '#000'; 
                 ctx.fillRect(0, 0, width, height);
@@ -378,7 +413,6 @@
                     }
                 }
 
-                // 🔥🔥🔥 關鍵修改：多行文字 + 嚴格對齊 (Export) 🔥🔥🔥
                 if (activeText) {
                     ctx.font = `${activeText.fontWeight || 'bold'} ${activeText.fontSize}px ${activeText.fontFamily || 'Arial, sans-serif'}`;
                     ctx.textAlign = 'center';
@@ -386,56 +420,25 @@
                     
                     const x = (activeText.x / 100) * width;
                     const y = (activeText.y / 100) * height;
-                    
-                    // 使用固定的 Padding 邏輯，與 Preview 的 10px/20px 對齊
-                    // 注意：Preview 是用了 previewRatio 縮放，這裡用原始值即可
-                    const paddingX = 20;
-                    const paddingY = 10;
+                    const padding = 20;
 
-                    // 1. 分割多行
-                    const lines = activeText.text.split('\n');
-                    // 設定行高：1.2 是標準值，對應 CSS line-height: 1.2
-                    const lineHeight = activeText.fontSize * 1.2;
-                    const totalTextHeight = lines.length * lineHeight;
-                    
-                    // 2. 計算最寬的一行 (為了背景)
-                    let maxLineWidth = 0;
-                    lines.forEach(line => {
-                        const w = ctx.measureText(line).width;
-                        if (w > maxLineWidth) maxLineWidth = w;
-                    });
-
-                    // 3. 畫背景
                     if (activeText.showBackground) {
+                        const metrics = ctx.measureText(activeText.text);
+                        const textWidth = metrics.width;
+                        const textHeight = activeText.fontSize;
                         ctx.fillStyle = activeText.backgroundColor;
-                        ctx.fillRect(
-                            x - maxLineWidth / 2 - paddingX, 
-                            y - totalTextHeight / 2 - paddingY, // 垂直置中計算
-                            maxLineWidth + paddingX * 2, 
-                            totalTextHeight + paddingY * 2
-                        );
+                        ctx.fillRect(x - textWidth/2 - padding, y - textHeight/2 - padding, textWidth + padding*2, textHeight + padding*2);
                     }
 
-                    // 4. 設定描邊
                     if (activeText.strokeWidth > 0) {
-                        ctx.lineJoin = 'round'; 
-                        ctx.miterLimit = 2;
+                        ctx.lineJoin = 'round'; ctx.miterLimit = 2;
                         ctx.lineWidth = activeText.strokeWidth;
                         ctx.strokeStyle = activeText.strokeColor;
+                        ctx.strokeText(activeText.text, x, y);
                     }
+
                     ctx.fillStyle = activeText.color;
-
-                    // 5. 逐行繪製
-                    // 起始 Y 座標 = 中心 Y - 總高度一半 + 第一行的一半 (修正 Baseline)
-                    let currentY = y - (totalTextHeight / 2) + (lineHeight / 2);
-
-                    lines.forEach(line => {
-                        if (activeText.strokeWidth > 0) {
-                            ctx.strokeText(line, x, currentY);
-                        }
-                        ctx.fillText(line, x, currentY);
-                        currentY += lineHeight;
-                    });
+                    ctx.fillText(activeText.text, x, y);
                 }
 
                 const frame = new VideoFrame(canvasRef, { timestamp: timestampMicros });
@@ -479,8 +482,25 @@
         } catch (err) {
             console.error(err);
             alert(`Export Failed: ${err.message}`);
+            
+            // Error Webhook
+            if (typeof window !== 'undefined') {
+                fetch('/api/discord', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        type: 'error', 
+                        filename: currentProcessingClip?.name || "Unknown",
+                        errorMessage: err.message
+                    })
+                }).catch(e => console.warn("Error webhook failed"));
+            }
+
             isExporting.set(false);
             startExportTrigger.set(0);
+        } finally {
+            // 🔥 移除防止關閉的監聽
+            window.removeEventListener('beforeunload', preventClose);
         }
     }
 
@@ -590,7 +610,6 @@
             if (videoRef && activeClip && activeClip.type.startsWith('video')) videoRef.play().catch(() => {});
             if (audioRef && activeAudioClip) audioRef.play().catch(() => {});
         } else if (isSourceMode) {
-            // Source mode auto-plays
         } else {
             if (videoRef) videoRef.pause();
             if (audioRef) audioRef.pause();
@@ -684,30 +703,25 @@
             <div class="flex flex-col items-center gap-4 text-green-400 animate-pulse"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span class="text-sm font-mono">Previewing Audio...</span></div>
         {/if}
         
-        <!-- 🔥🔥🔥 修正：文字預覽層 (禁止自動換行，使用 <pre>) 🔥🔥🔥 -->
+        <!-- Text Layer -->
         {#if !isSourceMode && activeTextClip}
             <div 
-                class="absolute pointer-events-none text-center select-none whitespace-pre"
+                class="absolute pointer-events-none text-center select-none"
                 style="
                     top: {activeTextClip.y}%; 
                     left: {activeTextClip.x}%; 
                     transform: translate(-50%, -50%);
-                    
-                    /* 縮放字體 */
                     font-size: {activeTextClip.fontSize * previewRatio}px;
                     color: {activeTextClip.color};
                     font-family: {activeTextClip.fontFamily || 'Arial, sans-serif'};
                     font-weight: {activeTextClip.fontWeight || 'bold'};
-                    
-                    /* 🔥 強制行高 1.2 (與 Canvas 一致) */
-                    line-height: 1.2;
-                    
+                    white-space: pre-wrap;
                     paint-order: stroke fill;
                     -webkit-text-stroke: {activeTextClip.strokeWidth * previewRatio}px {activeTextClip.strokeColor};
-                    
                     background-color: {activeTextClip.showBackground ? activeTextClip.backgroundColor : 'transparent'};
                     padding: {activeTextClip.showBackground ? `${10 * previewRatio}px ${20 * previewRatio}px` : '0'};
                     border-radius: {8 * previewRatio}px;
+                    line-height: 1.2;
                 "
             >
                 {activeTextClip.text}
