@@ -18,10 +18,16 @@ const features = [
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-400"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`
   }
 ];
+
+// 🔥 定義專屬的 Description (針對 SEO 優化)
+const pageTitle = "Convert MOV to MP4 Online - Free & No Upload | FastVideoCutter";
+const pageDescription = "Convert iPhone MOV files to MP4 instantly in your browser. 100% client-side conversion means no uploading huge files. Fast, secure, and free.";
+
 ---
 
 <MarketingLayout
-  title="Convert MOV to MP4 Online - Free & No Upload | FastVideoCutter"
+  title={pageTitle}
+  description={pageDescription} 
   heroBadge="Video Converter"
   heroTitle='Convert MOV to MP4 <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">Securely</span>'
   heroSubtitle="The safest way to convert iPhone MOV videos to MP4 format. No file upload required. Works directly in your browser."

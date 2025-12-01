@@ -1,6 +1,12 @@
 ---
+import '../styles/global.css'; 
 
-import '../styles/global.css'; // 👈 必須加上這一行，Tailwind 才會生效！
+// 🔥 修改點 1：接收 title 和 description 參數
+// 如果外部沒傳 description 進來，就使用預設的那段 (給首頁用)
+const { 
+  title, 
+  description = "The fastest online video cutter. Edit 4K videos directly in your browser using WebCodecs. No upload & sign up required, 100% private, no watermark." 
+} = Astro.props;
 ---
 
 <!doctype html>
@@ -9,29 +15,27 @@ import '../styles/global.css'; // 👈 必須加上這一行，Tailwind 才會�
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
-		<!-- 🔥 新增：PNG 版本 (專門餵給 Google 和舊瀏覽器) -->
-		<!-- Google 建議圖示大小是 48px 的倍數 (48, 96, 144, 192) -->
 		<link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
-		<!-- 選用：如果你想讓 Safari 書籤也好看一點，可以加這個 -->
     	<link rel="apple-touch-icon" href="/favicon-192.png" />
 		<link rel="manifest" href="/manifest.json">
 		<meta name="generator" content={Astro.generator} />
-		<title>Fast Video Cutter - Cut Video Online for Free, No Upload Needed</title>
-  		<meta name="description" content="The fastest online video cutter. Edit 4K videos directly in your browser using WebCodecs. No upload & sign up required, 100% private, no watermark." />
-		<!-- 🔥🔥🔥 Google Analytics 4 (開始) 🔥🔥🔥 -->
+		
+		<!-- 🔥 修改點 2：使用傳入的 title 變數 -->
+		<title>{title}</title>
+  		
+		<!-- 🔥🔥🔥 修改點 3：使用傳入的 description 變數 (不再寫死！) 🔥🔥🔥 -->
+		<meta name="description" content={description} />
+
+		<!-- GA4 -->
 		<script async src="https://www.googletagmanager.com/gtag/js?id=G-K8ZP1BZ0TZ"></script>
 		<script is:inline>
 		  window.dataLayer = window.dataLayer || [];
 		  function gtag(){dataLayer.push(arguments);}
 		  gtag('js', new Date());
-
 		  gtag('config', 'G-K8ZP1BZ0TZ');
 		</script>
-		<!-- 🔥🔥🔥 Google Analytics 4 (結束) 🔥🔥🔥 -->
-
 	
 	</head>
-	<!-- ✅ 新的 (允許捲動): 移除 h-screen 和 overflow-hidden，改為 min-h-screen -->
 	<body class="bg-[#1e1e1e] text-gray-300 font-sans min-h-screen selection:bg-cyan-500 selection:text-white">
 		<slot />
 	</body>

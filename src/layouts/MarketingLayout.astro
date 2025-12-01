@@ -1,10 +1,12 @@
 ---
+// src/layouts/MarketingLayout.astro
 import Layout from './Layout.astro';
 import Footer from '../components/Footer.astro';
 import HomeDemo from '../components/HomeDemo.astro';
 
 const { 
-  title,          
+  title,
+  description,    // 👈 🔥 修改 1: 新增接收 description 參數
   heroBadge,      
   heroTitle,      
   heroSubtitle,   
@@ -12,7 +14,8 @@ const {
 } = Astro.props;
 ---
 
-<Layout title={title}>
+<!-- 🔥 修改 2: 將 description 傳給 Layout -->
+<Layout title={title} description={description}>
   
   <div class="bg-[#020617] min-h-screen text-slate-300 font-sans selection:bg-cyan-500 selection:text-white overflow-x-hidden flex flex-col">
     
@@ -117,13 +120,7 @@ const {
         </div>
     </div>
 
-    <!-- 
-        3. 互動演示區域 (Demo Section - 完全獨立) 
-        🔥 關鍵修正：
-        1. 這裡是一個獨立的 div，不在 Hero 裡面。
-        2. mb-24 確保下面有足夠的空間，不與 Features 重疊。
-        3. w-full 和 px-4 確保在手機版有邊距。
-    -->
+    <!-- 3. 互動演示區域 -->
     <div class="w-full px-4 mb-24 relative z-20">
         <div class="max-w-6xl mx-auto transform hover:scale-[1.01] transition-transform duration-500 shadow-2xl shadow-cyan-500/10 rounded-xl">
             <HomeDemo />
