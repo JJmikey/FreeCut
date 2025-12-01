@@ -1,0 +1,101 @@
+---
+// src/pages/remove-audio-from-video.astro
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+
+// 針對 "Remove Audio" 的特色介紹
+const features = [
+  {
+    title: "One-Click Mute",
+    desc: "Instantly remove the sound track from your video. Just select the clip and set the volume to zero.",
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-cyan-400"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`
+  },
+  {
+    title: "Clean Up Footage",
+    desc: "Remove unwanted background noise, wind, or chatter from your recordings to make them professional.",
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-400"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`
+  },
+  {
+    title: "Replace with Music",
+    desc: "Once the audio is removed, you can use our editor to add your own background music or voiceover.",
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-400"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`
+  }
+];
+
+// 🔥 SEO 優化：標題控制在 65 字元內，涵蓋 Mute, Remove Audio, MP4
+const pageTitle = "Remove Audio from Video - Mute MP4 Online | FastVideoCutter";
+const pageDescription = "Instantly mute videos or remove audio tracks online. Clean up background noise from MP4, MOV, and WebM files directly in your browser. Free & Private.";
+
+---
+
+<MarketingLayout
+  title={pageTitle}
+  description={pageDescription} 
+  heroBadge="Audio Remover"
+  heroTitle='Mute Video <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">Instantly</span>'
+  heroSubtitle="The easiest way to remove sound from video. Delete audio tracks or mute background noise without uploading files."
+  features={features}
+>
+
+  <!-- SEO 內容區 -->
+  <div class="space-y-12">
+    
+    <!-- Introduction -->
+    <div class="text-center max-w-3xl mx-auto">
+      <h2 class="text-3xl font-bold text-white mb-4">Easily Remove Sound from Any Video</h2>
+      <p class="text-gray-400 leading-relaxed">
+        Got a great video clip but the audio is ruined by wind noise or unwanted talking? 
+        <strong>FastVideoCutter</strong> lets you mute the video completely or remove specific audio sections.
+        Since it works locally in your browser, you don't need to wait for uploads just to remove a sound track.
+      </p>
+    </div>
+
+    <!-- How-to Guide -->
+    <section class="space-y-6">
+        <h2 class="text-2xl font-bold text-white">How to remove audio from video online?</h2>
+        <ol class="space-y-4">
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">1</span>
+                <p class="pt-1 text-slate-300">Click <strong>"Start Editing"</strong> to open the tool.</p>
+            </li>
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">2</span>
+                <p class="pt-1 text-slate-300">Drag your video file onto the timeline.</p>
+            </li>
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">3</span>
+                <p class="pt-1 text-slate-300">
+                    <strong>To Mute:</strong> Select the video clip on the timeline, and in the properties panel, set the <strong>Volume</strong> to 0%.
+                </p>
+            </li>
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">4</span>
+                <p class="pt-1 text-slate-300">Click <strong>Export</strong>. The new video file will be saved without the original sound.</p>
+            </li>
+        </ol>
+    </section>
+
+    <!-- Comparison / Benefits -->
+    <div class="grid md:grid-cols-2 gap-8 mt-12">
+        <div class="bg-blue-900/10 border border-blue-800/50 rounded-xl p-6">
+            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Avoid Copyright Claims
+            </h3>
+            <p class="text-slate-400 text-sm leading-relaxed">
+                If your video contains copyrighted music, platforms like YouTube might block it. Use our tool to mute the original track and replace it with royalty-free music.
+            </p>
+        </div>
+        <div class="bg-purple-900/10 border border-purple-800/50 rounded-xl p-6">
+            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                No Re-encoding Quality Loss
+            </h3>
+            <p class="text-slate-400 text-sm leading-relaxed">
+                Our advanced browser-based engine ensures that removing audio doesn't degrade your video quality. It's fast, lossless, and secure.
+            </p>
+        </div>
+    </div>
+
+  </div>
+
+</MarketingLayout>

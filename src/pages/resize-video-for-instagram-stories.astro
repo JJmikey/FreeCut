@@ -1,0 +1,103 @@
+---
+// src/pages/resize-video-for-instagram-stories.astro
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+
+// 針對 "Instagram Resize" 的特色介紹
+const features = [
+  {
+    title: "9:16 Vertical Format",
+    desc: "Instantly convert landscape (16:9) videos to vertical (9:16) format perfect for Instagram Stories, Reels, and TikTok.",
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-cyan-400"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>`
+  },
+  {
+    title: "Smart Cropping",
+    desc: "Center your subject and crop out the unnecessary sides. Adjust the frame to ensure your video looks professional on mobile screens.",
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-400"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/><path d="m9 15 2 2 4-4"/></svg>`
+  },
+  {
+    title: "High Quality Export",
+    desc: "Resize your video without making it blurry. Our engine maintains the best possible resolution for social media platforms.",
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`
+  }
+];
+
+// 🔥 SEO 優化：標題 65 字元內，包含 Resize, Instagram, 9:16
+const pageTitle = "Resize Video for Instagram Stories - 9:16 Online | FastVideoCutter";
+const pageDescription = "Resize landscape videos to 9:16 for Instagram Stories instantly. No file upload required. Fit your video perfectly for IG, TikTok, and Reels.";
+
+---
+
+<MarketingLayout
+  title={pageTitle}
+  description={pageDescription} 
+  heroBadge="IG Resizer"
+  heroTitle='Resize Video for <span class="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-yellow-500">Instagram</span>'
+  heroSubtitle="Convert your videos to the perfect 9:16 vertical ratio for Instagram Stories, Reels, and TikTok. No upload needed."
+  features={features}
+>
+
+  <!-- SEO 內容區 -->
+  <div class="space-y-12">
+    
+    <!-- Introduction -->
+    <div class="text-center max-w-3xl mx-auto">
+      <h2 class="text-3xl font-bold text-white mb-4">Fit Your Video Perfectly for Stories</h2>
+      <p class="text-gray-400 leading-relaxed">
+        Have a horizontal video that looks tiny or awkward on <strong>Instagram Stories</strong>? 
+        <strong>FastVideoCutter</strong> helps you crop and resize your footage into the standard <strong>9:16 aspect ratio (1080x1920)</strong>.
+        Make your content fill the entire mobile screen to get more engagement.
+      </p>
+    </div>
+
+    <!-- How-to Guide -->
+    <section class="space-y-6">
+        <h2 class="text-2xl font-bold text-white">How to resize video for Instagram Stories?</h2>
+        <ol class="space-y-4">
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">1</span>
+                <p class="pt-1 text-slate-300">Click <strong>"Start Editing"</strong> to load your video.</p>
+            </li>
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">2</span>
+                <p class="pt-1 text-slate-300">
+                    Go to the <strong>Project Settings</strong> (or Canvas settings) and change the resolution to <strong>1080x1920</strong> (9:16).
+                </p>
+            </li>
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">3</span>
+                <p class="pt-1 text-slate-300">
+                    Use the <strong>Scale</strong> or <strong>Crop</strong> tool to make your video fill the vertical frame perfectly.
+                </p>
+            </li>
+            <li class="flex gap-4 items-start">
+                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">4</span>
+                <p class="pt-1 text-slate-300">Click <strong>Export</strong>. Your video is now ready to be uploaded to Stories or Reels.</p>
+            </li>
+        </ol>
+    </section>
+
+    <!-- Comparison / Benefits -->
+    <div class="grid md:grid-cols-2 gap-8 mt-12">
+        <div class="bg-blue-900/10 border border-blue-800/50 rounded-xl p-6">
+            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                Works for TikTok & Shorts too
+            </h3>
+            <p class="text-slate-400 text-sm leading-relaxed">
+                The 9:16 vertical format isn't just for Instagram. You can use the same resized video for TikTok, YouTube Shorts, and Facebook Reels.
+            </p>
+        </div>
+        <div class="bg-purple-900/10 border border-purple-800/50 rounded-xl p-6">
+            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                No Data Usage
+            </h3>
+            <p class="text-slate-400 text-sm leading-relaxed">
+                Resizing a 4K video online usually wastes a lot of data. Our tool processes the resize operation locally, saving your bandwidth and time.
+            </p>
+        </div>
+    </div>
+
+  </div>
+
+</MarketingLayout>
