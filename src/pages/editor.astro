@@ -13,6 +13,10 @@ import ProjectSaver from '../components/ProjectSaver.svelte';
 <Layout>
   <!-- 使用 AppShell 來管理佈局 -->
  <AppShell cleanMode={true}>
+        <!-- 🔥🔥🔥 新增這一行：給 Bing 和 Google 看的隱藏標題 🔥🔥🔥 -->
+    <!-- sr-only 讓它在視覺上消失，但 SEO 抓得到 -->
+    <h1 class="sr-only">FastVideoCutter Editor - Edit Video Online for Free</h1>
+
       <ProjectSaver client:only="svelte" slot="header" /> 
     <!-- 1. 頂部 Header -->
     <Header slot="header" client:load />
