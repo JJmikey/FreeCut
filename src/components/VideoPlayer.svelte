@@ -178,6 +178,24 @@
                 const duration = await getMediaDuration(file, url);
                 if (duration === null) return null;
 
+                // 🔥🔥🔥 新增：長影片警告 (Large File Warning) 🔥🔥🔥
+                // 與 FileUploader 保持一致，超過 30 分鐘 (1800秒) 跳出警告
+                const DURATION_LIMIT = 1800; 
+                if (duration > DURATION_LIMIT) {
+                    const confirmLarge = window.confirm(
+                        `⚠️ Large File Warning: "${file.name}"\n\n` +
+                        `This video is over 30 minutes long (${Math.floor(duration/60)} mins).\n` +
+                        `Browser-based editing may run out of memory and crash with large files.\n\n` +
+                        `We recommend trimming it into shorter segments.\n` +
+                        `Do you still want to proceed?`
+                    );
+                    // 如果用戶按 Cancel，回傳 null 代表不處理此檔案
+                    if (!confirmLarge) return null;
+                }
+                // 🔥🔥🔥 結束新增 🔥🔥🔥
+
+
+
                 const thumbnailBlobs = await generateThumbnails(file, duration);
                 const thumbnailUrls = thumbnailBlobs.map(b => URL.createObjectURL(b));
                 
