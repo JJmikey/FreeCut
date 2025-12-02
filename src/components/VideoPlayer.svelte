@@ -2,7 +2,8 @@
     import { currentVideoSource, currentTime, isPlaying } from '../stores/playerStore';
     import { mainTrackClips, audioTrackClips, textTrackClips, draggedFile, projectSettings, uploadedFiles, generateId, resolveOverlaps, createTextClip } from '../stores/timelineStore';
     import { isExporting, startExportTrigger } from '../stores/exportStore';
-    import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+    // 🔥 新增引入 FileSystemWritableFileStreamTarget
+    import { Muxer, ArrayBufferTarget, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
     import { get } from 'svelte/store';
     
     // Utils
@@ -179,8 +180,7 @@
                 if (duration === null) return null;
 
                 // 🔥🔥🔥 新增：長影片警告 (Large File Warning) 🔥🔥🔥
-                // 與 FileUploader 保持一致，超過 30 分鐘 (1800秒) 跳出警告
-                const DURATION_LIMIT = 1800; 
+                const DURATION_LIMIT = 1800; // 30 mins
                 if (duration > DURATION_LIMIT) {
                     const confirmLarge = window.confirm(
                         `⚠️ Large File Warning: "${file.name}"\n\n` +
@@ -189,12 +189,8 @@
                         `We recommend trimming it into shorter segments.\n` +
                         `Do you still want to proceed?`
                     );
-                    // 如果用戶按 Cancel，回傳 null 代表不處理此檔案
                     if (!confirmLarge) return null;
                 }
-                // 🔥🔥🔥 結束新增 🔥🔥🔥
-
-
 
                 const thumbnailBlobs = await generateThumbnails(file, duration);
                 const thumbnailUrls = thumbnailBlobs.map(b => URL.createObjectURL(b));
@@ -227,16 +223,12 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             type: 'import',
-                            filename: firstFile.name, // 標示這是從 Preview Drop 進來的
+                            filename: firstFile.name,
                             fileCount: validFiles.length,
                             duration: firstFile.duration ? Math.round(firstFile.duration) : 0
                         })
                     }).catch(e => console.warn("Drop webhook failed", e));
                 }
-                // 🔥🔥🔥 結束新增 🔥🔥🔥
-
-
-
             }
 
         } catch (err) {
@@ -263,7 +255,6 @@
         const now = Date.now();
         const elapsedRealTime = (now - exportStartTime) / 1000; 
 
-        // 前 2 秒不顯示，避免數據不穩
         if (elapsedRealTime < 2 || currentTimestamp <= 0) return "Calculating...";
 
         const processingSpeed = currentTimestamp / elapsedRealTime;
@@ -281,11 +272,7 @@
         }
     }
 
-    // ------------------------------------------------
-    // 🔥🔥🔥 Export Logic 🔥🔥🔥
-    // ------------------------------------------------
     async function fastExportProcess() {
-        // 防止關閉分頁
         const preventClose = (e) => {
             e.preventDefault();
             e.returnValue = ''; 
@@ -293,6 +280,8 @@
         window.addEventListener('beforeunload', preventClose);
 
         let currentProcessingClip = null;
+        let fileHandle = null;
+        let writableStream = null; // 🔥 1. 新增這個變數來追蹤寫入流
 
         try {
             isExporting.set(true);
@@ -303,7 +292,7 @@
             exportProgress = 0;
             exportStatus = "Initializing...";
             estimatedTimeText = "Calculating...";
-            exportStartTime = Date.now(); // 記錄開始時間
+            exportStartTime = Date.now(); 
 
             // Webhook: Start
             if (typeof window !== 'undefined') {
@@ -324,6 +313,35 @@
             const durationInSeconds = contentDuration; 
             const totalFrames = Math.ceil(durationInSeconds * fps);
             
+            // 決定儲存方式
+            let muxerTarget;
+            if (typeof window.showSaveFilePicker === 'function') {
+                try {
+                    fileHandle = await window.showSaveFilePicker({
+                        suggestedName: `fastvideocutter_${Date.now()}.mp4`,
+                        types: [{ description: 'MP4 Video', accept: { 'video/mp4': ['.mp4'] } }],
+                    });
+                    
+                    // 🔥 2. 將 writable 存到外部變數，而不是 const
+                    writableStream = await fileHandle.createWritable();
+                    muxerTarget = new FileSystemWritableFileStreamTarget(writableStream);
+                    
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        isExporting.set(false);
+                        window.removeEventListener('beforeunload', preventClose);
+                        return; 
+                    }
+                    console.warn("File System API failed, falling back to RAM:", err);
+                    muxerTarget = new ArrayBufferTarget(); 
+                }
+            } else {
+                muxerTarget = new ArrayBufferTarget();
+            }
+
+            // ... (Audio Config, Muxer, Video Encoder, Loop 邏輯全部保持不變) ...
+            // ... (中間省略，請保持原樣) ...
+            
             // 1. Audio Config
             let audioConfig = { codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, bitrate: 128_000 };
             let aSupport = await AudioEncoder.isConfigSupported(audioConfig);
@@ -334,14 +352,14 @@
 
             // 2. Muxer
             const muxer = new Muxer({
-                target: new ArrayBufferTarget(),
+                target: muxerTarget,
                 video: { codec: 'avc', width, height },
                 audio: aSupport.supported ? { 
                     codec: audioConfig.codec === 'opus' ? 'opus' : 'aac',
                     numberOfChannels: 2, 
                     sampleRate: audioConfig.sampleRate 
                 } : undefined,
-                fastStart: false 
+                fastStart: muxerTarget instanceof ArrayBufferTarget ? false : 'in-memory', 
             });
 
             // 3. Video Encoder
@@ -417,7 +435,6 @@
                 const timestampMicros = i * (1_000_000 / fps);
                 exportProgress = Math.round((i / totalFrames) * 100);
                 
-                // 🔥 更新 ETR (每 30 幀更新一次)
                 if (i % 30 === 0) {
                     estimatedTimeText = updateETR(timeInSeconds, durationInSeconds);
                     await new Promise(r => setTimeout(r, 0));
@@ -524,17 +541,31 @@
                 data.frames.forEach(f => f.image.close());
             });
 
+            // 7. Finalize
             await videoEncoder.flush();
             muxer.finalize();
 
-            const { buffer } = muxer.target;
-            const blob = new Blob([buffer], { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); 
-            a.href = url; 
-            a.download = `fastvideocutter_export_${Date.now()}.mp4`;
-            document.body.appendChild(a); a.click();
-            setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); isExporting.set(false); startExportTrigger.set(0); }, 1000);
+            // 🔥🔥🔥 3. 關鍵修改：明確關閉寫入流 🔥🔥🔥
+            if (writableStream) {
+                // 如果是寫入硬碟模式，必須手動關閉 Stream
+                // 這樣瀏覽器才會把 .crswap 檔名改成 .mp4 並刪除暫存
+                await writableStream.close();
+                console.log("Stream closed. File saved.");
+            } 
+            else if (muxerTarget instanceof ArrayBufferTarget) {
+                // RAM 模式保持不變
+                const { buffer } = muxer.target;
+                const blob = new Blob([buffer], { type: 'video/mp4' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); 
+                a.href = url; 
+                a.download = `fastvideocutter_export_${Date.now()}.mp4`;
+                document.body.appendChild(a); a.click();
+                setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 1000);
+            }
+
+            isExporting.set(false);
+            startExportTrigger.set(0);
 
             if (typeof window !== 'undefined') {
                 if (window.gtag) {
@@ -556,6 +587,9 @@
             console.error(err);
             alert(`Export Failed: ${err.message}`);
             
+            // 如果失敗，嘗試關閉 stream 以免檔案鎖死，但不需要 await
+            if (writableStream) writableStream.close().catch(() => {});
+
             if (typeof window !== 'undefined') {
                 fetch('/api/discord', {
                     method: 'POST',
@@ -846,8 +880,6 @@
                 <div class="text-center">
                     <div class="text-white font-bold text-lg">{exportStatus}</div>
                     <div class="text-cyan-400 font-mono text-xl mt-1">{exportProgress}%</div>
-                    
-                    <!-- 🔥 顯示預估剩餘時間 -->
                     <div class="text-gray-400 text-xs mt-2 font-mono">{estimatedTimeText}</div>
                 </div>
             </div>
