@@ -2,7 +2,6 @@
     import { currentVideoSource, currentTime, isPlaying } from '../stores/playerStore';
     import { mainTrackClips, audioTrackClips, textTrackClips, draggedFile, projectSettings, uploadedFiles, generateId, resolveOverlaps, createTextClip } from '../stores/timelineStore';
     import { isExporting, startExportTrigger } from '../stores/exportStore';
-    // 🔥 新增引入 FileSystemWritableFileStreamTarget
     import { Muxer, ArrayBufferTarget, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
     import { get } from 'svelte/store';
     
@@ -19,11 +18,11 @@
     let containerWidth = 0;
     let lastTime = 0;
     
-    // 🔥 Export UI 變數
+    // Export UI 變數
     let exportProgress = 0;
     let exportStatus = "";
-    let estimatedTimeText = ""; // 預估時間文字
-    let exportStartTime = 0;    // 記錄開始時間
+    let estimatedTimeText = ""; 
+    let exportStartTime = 0;    
     
     let isProcessingDrag = false;
 
@@ -179,7 +178,7 @@
                 const duration = await getMediaDuration(file, url);
                 if (duration === null) return null;
 
-                // 🔥🔥🔥 新增：長影片警告 (Large File Warning) 🔥🔥🔥
+                // 長影片警告
                 const DURATION_LIMIT = 1800; // 30 mins
                 if (duration > DURATION_LIMIT) {
                     const confirmLarge = window.confirm(
@@ -215,7 +214,7 @@
             if (validFiles.length > 0) {
                 currentVideoSource.set(validFiles[0]);
 
-                // 🔥🔥🔥 新增：補上 Discord Import 通知 🔥🔥🔥
+                // 補上 Discord Import 通知
                 if (typeof window !== 'undefined') {
                     const firstFile = validFiles[0];
                     fetch('/api/discord', {
@@ -248,9 +247,7 @@
         if (input) input.click();
     }
 
-    // ------------------------------------------------
-    // 🔥🔥🔥 Helper: 計算剩餘時間 (ETR) 🔥🔥🔥
-    // ------------------------------------------------
+    // --- Helper: ETR ---
     function updateETR(currentTimestamp, totalDuration) {
         const now = Date.now();
         const elapsedRealTime = (now - exportStartTime) / 1000; 
@@ -272,6 +269,9 @@
         }
     }
 
+    // ------------------------------------------------
+    // 🔥🔥🔥 Export Logic 🔥🔥🔥
+    // ------------------------------------------------
     async function fastExportProcess() {
         const preventClose = (e) => {
             e.preventDefault();
@@ -281,7 +281,7 @@
 
         let currentProcessingClip = null;
         let fileHandle = null;
-        let writableStream = null; // 🔥 1. 新增這個變數來追蹤寫入流
+        let writableStream = null; 
 
         try {
             isExporting.set(true);
@@ -322,7 +322,6 @@
                         types: [{ description: 'MP4 Video', accept: { 'video/mp4': ['.mp4'] } }],
                     });
                     
-                    // 🔥 2. 將 writable 存到外部變數，而不是 const
                     writableStream = await fileHandle.createWritable();
                     muxerTarget = new FileSystemWritableFileStreamTarget(writableStream);
                     
@@ -339,9 +338,6 @@
                 muxerTarget = new ArrayBufferTarget();
             }
 
-            // ... (Audio Config, Muxer, Video Encoder, Loop 邏輯全部保持不變) ...
-            // ... (中間省略，請保持原樣) ...
-            
             // 1. Audio Config
             let audioConfig = { codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, bitrate: 128_000 };
             let aSupport = await AudioEncoder.isConfigSupported(audioConfig);
@@ -503,32 +499,56 @@
                     }
                 }
 
+                // 🔥🔥🔥 修正文字渲染邏輯，支援多行與換行 🔥🔥🔥
                 if (activeText) {
-                    ctx.font = `${activeText.fontWeight || 'bold'} ${activeText.fontSize}px ${activeText.fontFamily || 'Arial, sans-serif'}`;
+                    const fontSize = activeText.fontSize;
+                    const lineHeight = fontSize * 1.2; 
+                    const lines = activeText.text.split('\n'); // 手動切割換行
+                    
+                    ctx.font = `${activeText.fontWeight || 'bold'} ${fontSize}px ${activeText.fontFamily || 'Arial, sans-serif'}`;
                     ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
+                    ctx.textBaseline = 'middle'; 
                     
                     const x = (activeText.x / 100) * width;
                     const y = (activeText.y / 100) * height;
                     const padding = 20;
 
+                    // 計算總高度以垂直置中
+                    const totalTextHeight = lines.length * lineHeight;
+                    const startY = y - (totalTextHeight / 2) + (lineHeight / 2);
+
                     if (activeText.showBackground) {
-                        const metrics = ctx.measureText(activeText.text);
-                        const textWidth = metrics.width;
-                        const textHeight = activeText.fontSize;
+                        let maxLineWidth = 0;
+                        lines.forEach(line => {
+                            const metrics = ctx.measureText(line);
+                            if (metrics.width > maxLineWidth) maxLineWidth = metrics.width;
+                        });
+
                         ctx.fillStyle = activeText.backgroundColor;
-                        ctx.fillRect(x - textWidth/2 - padding, y - textHeight/2 - padding, textWidth + padding*2, textHeight + padding*2);
+                        ctx.fillRect(
+                            x - maxLineWidth / 2 - padding, 
+                            y - totalTextHeight / 2 - padding, 
+                            maxLineWidth + padding * 2, 
+                            totalTextHeight + padding * 2
+                        );
                     }
 
                     if (activeText.strokeWidth > 0) {
                         ctx.lineJoin = 'round'; ctx.miterLimit = 2;
                         ctx.lineWidth = activeText.strokeWidth;
                         ctx.strokeStyle = activeText.strokeColor;
-                        ctx.strokeText(activeText.text, x, y);
                     }
 
                     ctx.fillStyle = activeText.color;
-                    ctx.fillText(activeText.text, x, y);
+
+                    // 迴圈繪製每一行
+                    lines.forEach((line, index) => {
+                        const lineY = startY + (index * lineHeight);
+                        if (activeText.strokeWidth > 0) {
+                            ctx.strokeText(line, x, lineY);
+                        }
+                        ctx.fillText(line, x, lineY);
+                    });
                 }
 
                 const frame = new VideoFrame(canvasRef, { timestamp: timestampMicros });
@@ -541,19 +561,14 @@
                 data.frames.forEach(f => f.image.close());
             });
 
-            // 7. Finalize
             await videoEncoder.flush();
             muxer.finalize();
 
-            // 🔥🔥🔥 3. 關鍵修改：明確關閉寫入流 🔥🔥🔥
             if (writableStream) {
-                // 如果是寫入硬碟模式，必須手動關閉 Stream
-                // 這樣瀏覽器才會把 .crswap 檔名改成 .mp4 並刪除暫存
                 await writableStream.close();
                 console.log("Stream closed. File saved.");
             } 
             else if (muxerTarget instanceof ArrayBufferTarget) {
-                // RAM 模式保持不變
                 const { buffer } = muxer.target;
                 const blob = new Blob([buffer], { type: 'video/mp4' });
                 const url = URL.createObjectURL(blob);
@@ -587,7 +602,6 @@
             console.error(err);
             alert(`Export Failed: ${err.message}`);
             
-            // 如果失敗，嘗試關閉 stream 以免檔案鎖死，但不需要 await
             if (writableStream) writableStream.close().catch(() => {});
 
             if (typeof window !== 'undefined') {
@@ -820,7 +834,7 @@
                     color: {activeTextClip.color};
                     font-family: {activeTextClip.fontFamily || 'Arial, sans-serif'};
                     font-weight: {activeTextClip.fontWeight || 'bold'};
-                    white-space: pre;
+                    white-space: pre; 
                     paint-order: stroke fill;
                     -webkit-text-stroke: {activeTextClip.strokeWidth * previewRatio}px {activeTextClip.strokeColor};
                     background-color: {activeTextClip.showBackground ? activeTextClip.backgroundColor : 'transparent'};
