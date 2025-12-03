@@ -119,14 +119,14 @@
             audioTrackClips.update(clips => [audioClip]);
 
             const textClip = createTextClip(0);
-            textClip.text = "Welcome to FastVideoCutter";
+            textClip.text = "✨FastVideoCutter";
             textClip.duration = 5;
             textClip.fontSize = 28;
-            textClip.x = 80;
+            textClip.x = 90;
             textClip.y = 85;
             textClip.color = '#ffffff';
             textClip.showBackground = true;
-            textClip.backgroundColor = '#0ea5e9cc';
+            textClip.backgroundColor = '#00000080';
             textTrackClips.update(clips => [textClip]);
 
             if (typeof window !== 'undefined') {

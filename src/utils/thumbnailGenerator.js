@@ -18,7 +18,7 @@ export async function generateThumbnails(file, opts = {}) {
       fixedDuration,
       targetCount,
       secondsPerThumb = 5,
-      minThumbs = 10,
+      minThumbs = 2,
       maxThumbs = 120,
       thumbWidth = 150
     } = opts;
@@ -57,13 +57,29 @@ export async function generateThumbnails(file, opts = {}) {
       let duration = fixedDuration || video.duration;
       if (!duration || !isFinite(duration)) duration = 30;
   
-      // 動態縮圖數量
-      const count =
-        targetCount ??
-        Math.min(
-          maxThumbs,
-          Math.max(minThumbs, Math.ceil(duration / Math.max(1, secondsPerThumb)))
-        );
+      // 🔥🔥🔥 修改開始：動態縮圖數量計算 🔥🔥🔥
+      let count = targetCount;
+
+      if (!count) {
+        // 策略 A: 極短影片 (< 10秒)
+        // 邏輯: 採用「高密度」，每 1 秒一張圖。
+        // 效果: 3秒影片 -> 3張圖；5秒影片 -> 5張圖。
+        // 限制: 最少給 2 張 (確保有一頭一尾)。
+        if (duration <= 10) {
+            count = Math.max(2, Math.ceil(duration)); 
+        } 
+        // 策略 B: 一般與長影片 (>= 10秒)
+        // 邏輯: 採用「低密度」，每 5 秒 (secondsPerThumb) 一張圖。
+        // 效果: 60秒影片 -> 12張圖；30分鐘影片 -> 限制在 120 張。
+        // 限制: 最少給 5 張，最多給 maxThumbs 張。
+        else {
+            const baseCount = Math.ceil(duration / Math.max(1, secondsPerThumb));
+            // 這裡把 minThumbs 寫死為 5，避免設定檔傳入的 10 影響中短影片
+            count = Math.min(maxThumbs, Math.max(5, baseCount));
+        }
+    }
+    // 🔥🔥🔥 修改結束 🔥🔥🔥
+      
   
       const blobs = [];
       const canvas = document.createElement('canvas');
