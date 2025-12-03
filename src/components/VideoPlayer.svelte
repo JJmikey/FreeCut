@@ -832,6 +832,19 @@
                 {activeTextClip.text}
             </div>
         {/if}
+        
+         <!-- 🔥🔥🔥 新增：全域 Loading 遮罩 (Global Loading Overlay) 🔥🔥🔥 -->
+        <!-- 把它放在最後面，並給予高 z-index，確保它永遠蓋在影片上面 -->
+        {#if isProcessingDrag}
+        <div class="absolute inset-0 z-[60] bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm">
+            <div class="w-12 h-12 border-4 border-gray-600 border-t-cyan-400 rounded-full animate-spin mb-4"></div>
+            <p class="text-cyan-400 font-bold animate-pulse">Processing Media...</p>
+           
+        </div>
+    {/if}
+    <!-- 🔥🔥🔥 結束新增 🔥🔥🔥 -->
+
+
 
         <!-- Overlays -->
         {#if isSourceMode}
