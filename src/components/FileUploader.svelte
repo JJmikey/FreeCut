@@ -2,6 +2,8 @@
     import { currentVideoSource } from '../stores/playerStore';
     // 引入 Stores (包含 resolveOverlaps)
     import { draggedFile, uploadedFiles, textTrackClips, createTextClip, resolveOverlaps } from '../stores/timelineStore';
+    // 🔥 新增：引入 History Store
+    import { addToHistory } from '../stores/historyStore';
     
     // 引入工具函式
     import { generateThumbnails } from '../utils/thumbnailGenerator';
@@ -20,12 +22,11 @@
         fileInput.click(); 
     }
   
-    // 🔥 Helper: 取得檔案真實長度 (包含 MOV 偵測與 WebM 修復)
+    // 🔥 Helper: 取得檔案真實長度
     function getMediaDuration(file, url) {
       return new Promise((resolve) => {
         if (file.type.startsWith('image')) { resolve(3); return; } 
   
-        // 根據類型建立元素
         const isVideo = file.type.startsWith('video') || file.name.toLowerCase().endsWith('.mov');
         const element = isVideo ? document.createElement('video') : document.createElement('audio');
         
@@ -37,12 +38,10 @@
         const isMov = file.name.toLowerCase().endsWith('.mov') || file.type === 'video/quicktime';
         let isResolved = false;
   
-        // 1. 超時保護 (針對 HEVC 卡死)
         const timeout = setTimeout(() => {
             if (isResolved) return;
             isResolved = true;
             if (isMov) {
-                // 🔥 翻譯為英文
                 alert(`Load Failed: ${file.name}\n\nYour system may not support this video format (likely HEVC). Please use MP4 or try Chrome/Safari.`);
                 resolve(null);
             } else {
@@ -54,19 +53,14 @@
         element.onloadedmetadata = () => {
             if (isResolved) return;
   
-            // 2. 像素測試 (Pixel Test) - 只對 Video 執行
             if (element instanceof HTMLVideoElement) {
-                // A. 檢查寬高
                 if (element.videoWidth === 0 || element.videoHeight === 0) {
                     isResolved = true;
                     clearTimeout(timeout);
-                    // 🔥 翻譯為英文
                     alert(`Format Not Supported: ${file.name}`);
                     resolve(null);
                     return;
                 }
-  
-                // B. 嘗試繪製第一幀 (檢測解碼器是否工作)
                 try {
                     element.currentTime = 0.1; 
                     const cvs = document.createElement('canvas');
@@ -81,7 +75,6 @@
             const rawDuration = element.duration;
             const isWebM = file.type === 'video/webm' || file.name.toLowerCase().endsWith('.webm');
   
-            // 3. 正常情況
             if (!isWebM && rawDuration !== Infinity && !isNaN(rawDuration)) {
                 isResolved = true;
                 clearTimeout(timeout);
@@ -89,7 +82,6 @@
                 return;
             }
   
-            // 4. WebM / Infinity 修復
             console.log("⚠️ [Debug] Starting WebM duration fix...");
             element.currentTime = 1e7; 
             
@@ -100,7 +92,6 @@
   
                 let realDuration = element.currentTime;
                 
-                // 嘗試讀取 buffered
                 if (Math.abs(realDuration - rawDuration) < 1 || realDuration > 36000) {
                     if (element.buffered.length > 0) {
                         const bufferedEnd = element.buffered.end(element.buffered.length - 1);
@@ -121,7 +112,6 @@
             isResolved = true;
             clearTimeout(timeout);
             if (isMov) {
-                // 🔥 翻譯為英文
                 alert(`Cannot Load: ${file.name}\nFormat not supported.`);
                 resolve(null);
             } else {
@@ -140,7 +130,6 @@
   
       try {
           const processedPromises = newRawFiles.map(async (file) => {
-              // 🔥 翻譯為英文 (Size Limit Check)
               if (file.size > 2 * 1024 * 1024 * 1024) {
                   alert(`File "${file.name}" is too large! Please use files under 2GB.`);
                   return null;
@@ -151,8 +140,7 @@
               
               if (duration === null) return null;
 
-              // 🔥🔥🔥 新增：長影片警告 (Duration Warning) 🔥🔥🔥
-              // 1800秒 = 30分鐘
+              // 長影片警告
               const DURATION_LIMIT = 1800; 
               if (duration > DURATION_LIMIT) {
                   const confirmLarge = window.confirm(
@@ -162,15 +150,12 @@
                       `We recommend trimming it into shorter segments.\n` +
                       `Do you still want to proceed?`
                   );
-                  // 如果用戶按 Cancel，就跳過這個檔案，不匯入
                   if (!confirmLarge) return null;
               }
               
-              // 生成縮圖
               const thumbnailBlobs = await generateThumbnails(file, duration);
               const thumbnailUrls = thumbnailBlobs.map(b => URL.createObjectURL(b));
   
-              // 生成波形
               let waveform = null;
               const isVideo = file.type.startsWith('video') || file.name.toLowerCase().endsWith('.mov');
               const isAudio = file.type.startsWith('audio');
@@ -196,7 +181,7 @@
           
           uploadedFiles.update(currentFiles => [...currentFiles, ...validFiles]);
           
-          // 發送 Import 通知
+          // Import 通知
         if (validFiles.length > 0) {
             const firstFile = validFiles[0];
             fetch('/api/discord', {
@@ -261,7 +246,12 @@
         });
     }
   
+    // 🔥🔥🔥 核心修改：新增文字前呼叫 addToHistory 🔥🔥🔥
     function addTextToTimeline() {
+        // 1. 先存檔
+        addToHistory();
+
+        // 2. 再執行修改
         const clips = get(textTrackClips);
         const currentMaxTime = clips.length > 0 ? Math.max(...clips.map(c => c.startOffset + c.duration)) : 0;
         const newClip = createTextClip(currentMaxTime);
@@ -285,13 +275,14 @@
   </script>
   
   <div class="flex flex-col h-full">
-      <!-- UI Layout 保持不變 -->
+      
       <div class="flex border-b border-gray-700 mb-4 shrink-0">
           <button class="flex-1 py-3 text-sm font-medium {activeTab === 'media' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-[#252525]' : 'text-gray-400 hover:text-gray-200'}" on:click={() => activeTab = 'media'}>Media</button>
           <button class="flex-1 py-3 text-sm font-medium {activeTab === 'text' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-[#252525]' : 'text-gray-400 hover:text-gray-200'}" on:click={() => activeTab = 'text'}>Text</button>
       </div>
   
       {#if activeTab === 'media'}
+          
           <div class="shrink-0 mb-4">
               <button 
                   on:click={handleClick} 
@@ -308,7 +299,7 @@
               </button>
               <input id="global-file-input" bind:this={fileInput} type="file" class="hidden" multiple accept="image/*,video/*,audio/*,.mov,.mkv" on:change={handleFileChange} />
           </div>
-          <!-- Filters & Grid 保持不變 -->
+  
           <div class="flex items-center gap-2 mb-2 shrink-0 overflow-x-auto no-scrollbar pb-1">
               <button class="px-3 py-1 rounded-full text-[10px] font-medium border transition-colors whitespace-nowrap {activeFilter === 'all' ? 'bg-gray-200 text-black border-gray-200' : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400'}" on:click={() => activeFilter = 'all'}>All ({safeFiles.length})</button>
               <button class="px-3 py-1 rounded-full text-[10px] font-medium border transition-colors whitespace-nowrap {activeFilter === 'video' ? 'bg-cyan-900 text-cyan-400 border-cyan-500' : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400'}" on:click={() => activeFilter = 'video'}>Video ({countVideo})</button>

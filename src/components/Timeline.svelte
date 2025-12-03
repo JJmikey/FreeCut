@@ -4,6 +4,7 @@
     import { splitClip, resolveOverlaps } from '../stores/timelineStore';
     import { onMount } from 'svelte';
     import { get } from 'svelte/store';
+    import historyStack, { addToHistory, undo, redo } from '../stores/historyStore'; // 🔥 引入
 
     let pixelsPerSecond = 20; 
     let timelineContainer; 
@@ -49,6 +50,10 @@
     let guideX = 0;           
     let guideTimeText = "";   
 
+    // 🔥 新增：防止無效操作存入歷史紀錄
+    let hasMoved = false;
+    let hasResized = false;
+
     const TRACK_Y = { RULER: 24, TEXT: 64, MAIN: 96, AUDIO: 64 };
     const TRACK_BOUNDS = {
         text: { top: TRACK_Y.RULER, bottom: TRACK_Y.RULER + TRACK_Y.TEXT },
@@ -85,6 +90,8 @@
         switchToTimeline();
         const data = e.dataTransfer.getData('application/json');
         if (data) {
+            addToHistory(); // 🔥 在修改 mainTrackClips 之前記錄
+
             const fileData = JSON.parse(data);
             if (fileData.type.startsWith('audio')) { alert("Audio -> Audio Track"); return; }
             const actualFileObject = get(draggedFile); 
@@ -175,12 +182,14 @@
     // --- Split & Delete ---
     function handleSplit() {
         if (!$selectedClipIds || $selectedClipIds.length !== 1) { alert("Please select a single clip to split."); return; }
+        addToHistory(); // 🔥 記錄
         switchToTimeline();
         splitClip($selectedClipIds[0], $currentTime);
         selectedClipIds.set([]);
     }
     function deleteSelected() {
         if ($selectedClipIds.length === 0) return;
+        addToHistory(); // 🔥 記錄
         mainTrackClips.update(clips => clips.filter(c => !$selectedClipIds.includes(c.id)));
         audioTrackClips.update(clips => clips.filter(c => !$selectedClipIds.includes(c.id)));
         textTrackClips.update(clips => clips.filter(c => !$selectedClipIds.includes(c.id)));
@@ -190,6 +199,20 @@
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected(); 
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); handleSplit(); }
+        // 🔥 Undo (Ctrl+Z)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            undo();
+        }
+
+        // 🔥 Redo (Ctrl+Y 或 Ctrl+Shift+Z)
+        if (
+            ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') || 
+            ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.shiftKey)
+        ) {
+            e.preventDefault();
+            redo();
+        }
     }
     function handleContextMenu(e, clipId) { 
         e.preventDefault(); switchToTimeline(); 
@@ -208,6 +231,9 @@
     // --- Resize Logic ---
     function startResize(e, clip, trackType, edge) {
         e.stopPropagation();
+        
+        hasResized = false; // 🔥 重置旗標
+
         switchToTimeline();
         selectedClipIds.set([clip.id]);
         resizingClipId = clip.id;
@@ -230,6 +256,14 @@
 
     function handleResizeMove(e) {
         if (!resizingClipId) return;
+
+         // 🔥🔥🔥 關鍵修改：第一次真的產生位移時，才存入歷史 🔥🔥🔥
+         if (!hasResized) {
+            addToHistory();
+            hasResized = true;
+        }
+
+
         lastMouseEvent = e;
         checkAutoScroll(e.clientX);
 
@@ -298,6 +332,9 @@
     // --- Move Logic ---
     function startMoveClip(e, clip, trackType) {
         e.stopPropagation();
+        
+        hasMoved = false; // 🔥 重置旗標
+
         switchToTimeline();
         
         if (!$selectedClipIds.includes(clip.id) && !e.shiftKey) selectedClipIds.set([clip.id]);
@@ -325,6 +362,15 @@
 
     function handleMoveClip(e) {
         if (!movingClipId) return;
+
+
+        // 🔥🔥🔥 關鍵修改：第一次真的產生位移時，才存入歷史 🔥🔥🔥
+        if (!hasMoved) {
+            addToHistory();
+            hasMoved = true;
+        }
+
+
         lastMouseEvent = e;
         checkAutoScroll(e.clientX);
 
@@ -500,6 +546,28 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" x2="8.12" y1="4" y2="15.88"/><line x1="14.47" x2="20" y1="14.48" y2="20"/><line x1="8.12" x2="12" y1="8.12" y2="12"/></svg>
                 Split
             </button>
+            <!-- 分隔線 -->
+        <div class="w-[1px] h-4 bg-gray-600 mx-1"></div>
+
+        <!-- 🔥 Undo Button -->
+        <button 
+            on:click={undo} 
+            disabled={$historyStack.past.length === 0}
+            class="text-gray-400 hover:text-white flex items-center justify-center p-1.5 rounded hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
+            title="Undo (Ctrl+Z)"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+        </button>
+
+        <!-- 🔥 Redo Button -->
+        <button 
+            on:click={redo} 
+            disabled={$historyStack.future.length === 0}
+            class="text-gray-400 hover:text-white flex items-center justify-center p-1.5 rounded hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
+            title="Redo (Ctrl+Y)"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 3.7"/></svg>
+        </button>
         </div>
         <div class="flex items-center gap-3">
             <span class="text-xs text-gray-400">Zoom</span>

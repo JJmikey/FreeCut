@@ -119,7 +119,7 @@ export function splitClip(clipId, splitTime) {
 
     // 檢查分割點有效性
     if (splitTime <= clip.startOffset + 0.1 || splitTime >= clipEnd - 0.1) {
-        alert("無法分割：太靠近邊緣");
+        alert("Cannot split: too close to the edge");
         return;
     }
 

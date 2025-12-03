@@ -820,7 +820,7 @@
                     color: {activeTextClip.color};
                     font-family: {activeTextClip.fontFamily || 'Arial, sans-serif'};
                     font-weight: {activeTextClip.fontWeight || 'bold'};
-                    white-space: pre-wrap;
+                    white-space: pre;
                     paint-order: stroke fill;
                     -webkit-text-stroke: {activeTextClip.strokeWidth * previewRatio}px {activeTextClip.strokeColor};
                     background-color: {activeTextClip.showBackground ? activeTextClip.backgroundColor : 'transparent'};
