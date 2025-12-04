@@ -11,6 +11,8 @@
     import { generateThumbnails } from '../utils/thumbnailGenerator';
     import { generateWaveform } from '../utils/waveformGenerator';
 
+   
+
     let videoRef;
     let audioRef; 
     let imageRef;
@@ -361,7 +363,11 @@
                     fileHandle = await window.showSaveFilePicker({ suggestedName: `fastvideocutter_${Date.now()}.mp4`, types: [{ description: 'MP4 Video', accept: { 'video/mp4': ['.mp4'] } }] });
                     writableStream = await fileHandle.createWritable(); muxerTarget = new FileSystemWritableFileStreamTarget(writableStream);
                 } catch (err) {
-                    if (err.name === 'AbortError') { isExporting.set(false); window.removeEventListener('beforeunload', preventClose); return; }
+                    if (err.name === 'AbortError') {
+                        console.log("Export cancelled by user.");
+                        isExporting.set(false); 
+                        startExportTrigger.set(0);                        
+                        window.removeEventListener('beforeunload', preventClose); return; }
                     console.warn("FS API failed:", err); muxerTarget = new ArrayBufferTarget(); 
                 }
             } else { muxerTarget = new ArrayBufferTarget(); }
