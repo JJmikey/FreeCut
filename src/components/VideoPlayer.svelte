@@ -1,4 +1,5 @@
 <script>
+    import { onMount } from 'svelte';
     import { currentVideoSource, currentTime, isPlaying } from '../stores/playerStore';
     import { mainTrackClips, audioTrackClips, textTrackClips, draggedFile, projectSettings, uploadedFiles, generateId, resolveOverlaps, createTextClip } from '../stores/timelineStore';
     import { isExporting, startExportTrigger } from '../stores/exportStore';
@@ -6,7 +7,6 @@
     import { Muxer, ArrayBufferTarget, FileSystemWritableFileStreamTarget } from 'mp4-muxer';
     import { get } from 'svelte/store';
     
-    // Utils
     import { decodeGifFrames } from '../utils/gifHelper';
     import { generateThumbnails } from '../utils/thumbnailGenerator';
     import { generateWaveform } from '../utils/waveformGenerator';
@@ -18,13 +18,17 @@
     let containerWidth = 0;
     let lastTime = 0;
     
-    // Export UI 變數
     let exportProgress = 0;
     let exportStatus = "";
     let estimatedTimeText = ""; 
     let exportStartTime = 0;    
     
     let isProcessingDrag = false;
+
+    onMount(() => {
+        isExporting.set(false);
+        startExportTrigger.set(0);
+    });
 
     // ============================================================
     // Reactive State
@@ -43,11 +47,17 @@
     $: activeAudioClip = $audioTrackClips.find(clip => $currentTime >= clip.startOffset && $currentTime < (clip.startOffset + clip.duration));
     $: activeTextClip = $textTrackClips.find(clip => $currentTime >= clip.startOffset && $currentTime < (clip.startOffset + clip.duration));
   
-    $: if ($startExportTrigger > 0 && !$isExporting && hasClips) {
-        fastExportProcess();
+    // 監聽導出觸發 (防止幽靈觸發)
+    $: if ($startExportTrigger > 0) {
+        if (!$isExporting && hasClips) {
+            fastExportProcess();
+        } else if (!hasClips) {
+            console.log("Export clicked but timeline is empty. Resetting trigger.");
+            startExportTrigger.set(0);
+        }
     }
 
-    // 寬鬆的類型判斷 Helper
+    // 類型判斷 Helper
     const isVideoType = (type) => type && (type.startsWith('video') || type === 'video/quicktime' || type === 'application/octet-stream');
     const isAudioType = (type) => type && type.startsWith('audio');
     const isImageType = (type) => type && type.startsWith('image');
@@ -126,141 +136,37 @@
     }
 
     // ============================================================
-    // Helper Functions
-    // ============================================================
-
-    function getMediaDuration(file, url) {
-      return new Promise((resolve) => {
-        if (file.type.startsWith('image')) { resolve({ duration: 3, width: 1920, height: 1080 }); return; } 
-  
-        const isVideo = file.type.startsWith('video') || file.name.toLowerCase().endsWith('.mov');
-        const element = isVideo ? document.createElement('video') : document.createElement('audio');
-        
-        element.preload = 'metadata';
-        element.muted = true;
-        element.src = url;
-        if (isVideo) element.playsInline = true;
-  
-        const isMov = file.name.toLowerCase().endsWith('.mov') || file.type === 'video/quicktime';
-        let isResolved = false;
-  
-        const timeout = setTimeout(() => {
-            if (isResolved) return;
-            isResolved = true;
-            if (isMov) {
-                alert(`Load Failed: ${file.name}\n\nSystem format issue. Try Chrome/Safari.`);
-                resolve(null);
-            } else {
-                console.warn("⚠️ [Debug] Read timeout, returning default 30s");
-                resolve({ duration: 30, width: 1280, height: 720 });
-            }
-        }, 4000);
-  
-        element.onloadedmetadata = () => {
-            if (isResolved) return;
-            
-            if (element instanceof HTMLVideoElement) {
-                if (element.videoWidth === 0 || element.videoHeight === 0) {
-                    isResolved = true;
-                    clearTimeout(timeout);
-                    alert(`Format Not Supported: ${file.name}`);
-                    resolve(null);
-                    return;
-                }
-            }
-  
-            const rawDuration = element.duration;
-            const vWidth = element.videoWidth || 0;
-            const vHeight = element.videoHeight || 0;
-            
-            if (rawDuration !== Infinity && !isNaN(rawDuration) && rawDuration > 0) {
-                isResolved = true;
-                clearTimeout(timeout);
-                resolve({ duration: rawDuration, width: vWidth, height: vHeight });
-                return;
-            }
-  
-            console.log("⚠️ [Debug] Duration is Infinity. Starting WebM fix...");
-            element.currentTime = 1e7; 
-            
-            element.onseeked = () => {
-                if (isResolved) return;
-                isResolved = true;
-                clearTimeout(timeout);
-  
-                let realDuration = element.currentTime;
-                if (realDuration === 0 || realDuration > 360000) { 
-                     if (element.buffered.length > 0) {
-                        realDuration = element.buffered.end(element.buffered.length - 1);
-                     }
-                }
-                if (realDuration === 0 || realDuration > 360000) {
-                    realDuration = 30; 
-                }
-                resolve({ duration: realDuration, width: vWidth, height: vHeight });
-            };
-        };
-  
-        element.onerror = () => { 
-            if (isResolved) return;
-            isResolved = true;
-            clearTimeout(timeout);
-            if (isMov) {
-                alert(`Cannot Load: ${file.name}`);
-                resolve(null);
-            } else {
-                resolve({ duration: 5, width: 0, height: 0 });
-            }
-        };
-      });
-    }
-
-    function calculateAspectRatio(w, h) {
-        if (!w || !h) return '16:9';
-        const ratio = w / h;
-        if (Math.abs(ratio - 16/9) < 0.05) return '16:9';
-        if (Math.abs(ratio - 9/16) < 0.05) return '9:16';
-        if (Math.abs(ratio - 1) < 0.05) return '1:1';
-        if (Math.abs(ratio - 4/5) < 0.05) return '4:5';
-        return 'custom';
-    }
-
-    function updateETR(currentTimestamp, totalDuration) {
-        const now = Date.now();
-        const elapsedRealTime = (now - exportStartTime) / 1000; 
-        if (elapsedRealTime < 2 || currentTimestamp <= 0) return "Calculating...";
-        const processingSpeed = currentTimestamp / elapsedRealTime;
-        const remainingVideoSeconds = totalDuration - currentTimestamp;
-        const secondsLeft = remainingVideoSeconds / processingSpeed;
-        if (!isFinite(secondsLeft) || secondsLeft < 0) return "Calculating...";
-        if (secondsLeft < 60) return `${Math.ceil(secondsLeft)}s remaining`;
-        const minutes = Math.floor(secondsLeft / 60);
-        const seconds = Math.ceil(secondsLeft % 60);
-        return `${minutes}m ${seconds}s remaining`;
-    }
-
-    function getSmartBitrate(width, height, fps) {
-        const numPixels = width * height;
-        if (numPixels >= 8_294_400) return 80_000_000; // 4K
-        if (numPixels >= 3_686_400) return 40_000_000; // 2K
-        if (numPixels >= 2_073_600) return 18_000_000; // 1080p
-        if (numPixels >= 921_600) return 8_000_000;    // 720p
-        return 4_000_000;
-    }
-
-    // 🔥🔥🔥 Helper: 將 Float32 Audio 轉為 Int16 (解決無聲關鍵) 🔥🔥🔥
-    function convertFloat32ToInt16(float32Array) {
-        const int16Array = new Int16Array(float32Array.length);
-        for (let i = 0; i < float32Array.length; i++) {
-            const s = Math.max(-1, Math.min(1, float32Array[i]));
-            int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-        return int16Array;
-    }
-
-    // ============================================================
     // Main Handlers
     // ============================================================
+
+    function togglePlay() {
+        if (isSourceMode) {
+            const type = $currentVideoSource.type;
+            if (isVideoType(type)) {
+                videoRef.paused ? videoRef.play() : videoRef.pause();
+            } else if (isAudioType(type)) {
+                audioRef.paused ? audioRef.play() : audioRef.pause();
+            }
+            return;
+        }
+        if (!hasClips || $isExporting) return;
+        if (!$isPlaying && $currentTime >= contentDuration) currentTime.set(0);
+        isPlaying.update(v => !v);
+    }
+    
+    function loop(timestamp) {
+        if (!$isPlaying || $isExporting || isSourceMode) return;
+        if (contentDuration === 0) { isPlaying.set(false); currentTime.set(0); return; }
+        const deltaTime = (timestamp - lastTime) / 1000;
+        lastTime = timestamp;
+        currentTime.update(t => t + deltaTime);
+        if ($currentTime >= contentDuration) {
+            isPlaying.set(false);
+            currentTime.set(contentDuration);
+            return;
+        }
+        requestAnimationFrame(loop);
+    }
 
     function addToProject() {
         const source = $currentVideoSource;
@@ -335,37 +241,6 @@
         } catch (e) { console.error(e); alert("Failed to load sample project."); } finally { isProcessingDrag = false; }
     }
   
-    // Play Button (Fixed Logic)
-    function togglePlay() {
-        if (isSourceMode) {
-            const type = $currentVideoSource.type;
-            if (isVideoType(type)) {
-                videoRef.paused ? videoRef.play() : videoRef.pause();
-            } else if (isAudioType(type)) {
-                audioRef.paused ? audioRef.play() : audioRef.pause();
-            }
-            return;
-        }
-        if (!hasClips || $isExporting) return;
-        if (!$isPlaying && $currentTime >= contentDuration) currentTime.set(0);
-        isPlaying.update(v => !v);
-    }
-    
-    function loop(timestamp) {
-        if (!$isPlaying || $isExporting || isSourceMode) return;
-        if (contentDuration === 0) { isPlaying.set(false); currentTime.set(0); return; }
-        const deltaTime = (timestamp - lastTime) / 1000;
-        lastTime = timestamp;
-        currentTime.update(t => t + deltaTime);
-        if ($currentTime >= contentDuration) {
-            isPlaying.set(false);
-            currentTime.set(contentDuration);
-            return;
-        }
-        requestAnimationFrame(loop);
-    }
-
-    // Drag & Drop Handler
     async function handlePreviewDrop(e) {
         e.preventDefault(); if ($isExporting) return;
         const jsonString = e.dataTransfer.getData('application/json');
@@ -386,7 +261,8 @@
                 if (!info) return null;
                 const { duration, width, height } = info;
                 const DURATION_LIMIT = 1800; 
-                if (duration > DURATION_LIMIT) { if (!confirm(`⚠️ Large File Warning: "${file.name}"\n\n` +
+                if (duration > DURATION_LIMIT) { if (!confirm(
+                    `⚠️ Large File Warning: "${file.name}"\n\n` +
                       `This video is over 30 minutes long (${Math.floor(duration/60)} mins).\n` +
                       `Browser-based editing may run out of memory and crash with large files.\n\n` +
                       `We recommend trimming it into shorter segments.\n` +
@@ -399,13 +275,15 @@
             });
             const results = await Promise.all(processedPromises);
             const validFiles = results.filter(r => r !== null);
+            
             const currentClips = get(mainTrackClips);
             if (currentClips.length === 0 && validFiles.length > 0) {
                 const firstVideo = validFiles.find(f => (isVideoType(f.type) || f.name.endsWith('.mov')) && f.width > 0);
                 if (firstVideo) {
                     addToHistory();
                     console.log(`[Drag] Auto-set canvas: ${firstVideo.width}x${firstVideo.height}`);
-                    projectSettings.update(s => ({ ...s, width: firstVideo.width, height: firstVideo.height, aspectRatio: 'original'  }));
+                    // 🔥🔥🔥 修正為 'original'，解決顯亮問題 🔥🔥🔥
+                    projectSettings.update(s => ({ ...s, width: firstVideo.width, height: firstVideo.height, aspectRatio: 'original' }));
                 }
             }
             uploadedFiles.update(current => [...current, ...validFiles]);
@@ -434,381 +312,295 @@
         e.dataTransfer.effectAllowed = 'copy';
     }
 
-    // 放在 fastExportProcess() 之前
     async function chooseAudioEncoderConfig() {
-    // 先試 AAC（MP4 常見）
-    const aac = { codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, bitrate: 128_000 };
-    try {
-        const ok = await AudioEncoder.isConfigSupported(aac);
-        if (ok.supported) return { config: aac, muxerCodec: 'aac', sampleRate: 44100 };
-    } catch (_) {}
-
-    // 不支援就降級 Opus（Linux/Chrome 友好）
-    const opus = { codec: 'opus', sampleRate: 48000, numberOfChannels: 2, bitrate: 128_000 };
-    try {
-        const ok2 = await AudioEncoder.isConfigSupported(opus);
-        if (ok2.supported) return { config: opus, muxerCodec: 'opus', sampleRate: 48000 };
-    } catch (_) {}
-
-    throw new Error('No supported audio encoder (AAC/Opus) available in this browser.');
+        const aac = { codec: 'mp4a.40.2', sampleRate: 44100, numberOfChannels: 2, bitrate: 128_000 };
+        try {
+            const ok = await AudioEncoder.isConfigSupported(aac);
+            if (ok.supported) return { config: aac, muxerCodec: 'aac', sampleRate: 44100 };
+        } catch (_) {}
+        const opus = { codec: 'opus', sampleRate: 48000, numberOfChannels: 2, bitrate: 128_000 };
+        try {
+            const ok2 = await AudioEncoder.isConfigSupported(opus);
+            if (ok2.supported) return { config: opus, muxerCodec: 'opus', sampleRate: 48000 };
+        } catch (_) {}
+        throw new Error('No supported audio encoder (AAC/Opus) available.');
     }
-
 
     // ------------------------------------------------
-// 🔥🔥🔥 Export Logic (Full Fix, with AAC→Opus fallback + f32 audio) 🔥🔥🔥
-// ------------------------------------------------
+    // 🔥🔥🔥 Export Logic (Full Integrated) 🔥🔥🔥
+    // ------------------------------------------------
     async function fastExportProcess() {
-    const preventClose = (e) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', preventClose);
+        const preventClose = (e) => { e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('beforeunload', preventClose);
 
-    let currentProcessingClip = null;
-    let fileHandle = null;
-    let writableStream = null;
+        let currentProcessingClip = null;
+        let fileHandle = null;
+        let writableStream = null; 
+        
+        const offscreenVideo = document.createElement('video');
+        offscreenVideo.crossOrigin = "anonymous"; offscreenVideo.muted = true; offscreenVideo.playsInline = true; offscreenVideo.preload = 'auto';
 
-    const offscreenVideo = document.createElement('video');
-    offscreenVideo.crossOrigin = "anonymous";
-    offscreenVideo.muted = true;
-    offscreenVideo.playsInline = true;
-    offscreenVideo.preload = 'auto';
-
-    try {
-        // 初始化 UI 狀態
-        isExporting.set(true);
-        isPlaying.set(false);
-        if (videoRef) videoRef.pause();
-        if (audioRef) audioRef.pause();
-        exportProgress = 0;
-        exportStatus = "Initializing...";
-        estimatedTimeText = "Calculating...";
-        exportStartTime = Date.now();
-        if (typeof window !== 'undefined') {
-        fetch('/api/discord', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'export_start', filename: 'Exporting...', duration: contentDuration.toFixed(1) })
-        }).catch(() => {});
-        }
-
-        // 安全解析度
-        let width = $projectSettings.width;
-        let height = $projectSettings.height;
-        if (width % 2 !== 0) width -= 1;
-        if (height % 2 !== 0) height -= 1;
-        if (width < 2) width = 2;
-        if (height < 2) height = 2;
-
-        const fps = 30;
-        const durationInSeconds = contentDuration;
-        const totalFrames = Math.ceil(durationInSeconds * fps);
-
-        // 目標儲存
-        let muxerTarget;
-        if (typeof window.showSaveFilePicker === 'function') {
         try {
-            fileHandle = await window.showSaveFilePicker({
-            suggestedName: `fastvideocutter_${Date.now()}.mp4`,
-            types: [{ description: 'MP4 Video', accept: { 'video/mp4': ['.mp4'] } }]
+            isExporting.set(true); isPlaying.set(false); if (videoRef) videoRef.pause(); if (audioRef) audioRef.pause();
+            exportProgress = 0; exportStatus = "Initializing..."; estimatedTimeText = "Calculating..."; exportStartTime = Date.now(); 
+            if (typeof window !== 'undefined') fetch('/api/discord', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'export_start', filename: 'Exporting...', duration: contentDuration.toFixed(1) }) }).catch(() => {});
+
+            let width = $projectSettings.width;
+            let height = $projectSettings.height;
+            if (width % 2 !== 0) width -= 1; if (height % 2 !== 0) height -= 1;
+            if (width < 2) width = 2; if (height < 2) height = 2;
+            console.log(`Exporting with safe resolution: ${width}x${height}`);
+
+            const fps = 30;
+            const durationInSeconds = contentDuration; 
+            const totalFrames = Math.ceil(durationInSeconds * fps);
+            
+            let muxerTarget;
+            if (typeof window.showSaveFilePicker === 'function') {
+                try {
+                    fileHandle = await window.showSaveFilePicker({ suggestedName: `fastvideocutter_${Date.now()}.mp4`, types: [{ description: 'MP4 Video', accept: { 'video/mp4': ['.mp4'] } }] });
+                    writableStream = await fileHandle.createWritable(); muxerTarget = new FileSystemWritableFileStreamTarget(writableStream);
+                } catch (err) {
+                    if (err.name === 'AbortError') { isExporting.set(false); window.removeEventListener('beforeunload', preventClose); return; }
+                    console.warn("FS API failed:", err); muxerTarget = new ArrayBufferTarget(); 
+                }
+            } else { muxerTarget = new ArrayBufferTarget(); }
+
+            // Audio & Muxer Setup
+            exportStatus = "Preparing Audio...";
+            const { config: audioConfig, muxerCodec: audioMuxCodec, sampleRate: AUDIO_SR } = await chooseAudioEncoderConfig();
+
+            const muxer = new Muxer({
+                target: muxerTarget,
+                video: { codec: 'avc', width, height },
+                audio: { codec: audioMuxCodec, numberOfChannels: 2, sampleRate: AUDIO_SR },
+                fastStart: muxerTarget instanceof ArrayBufferTarget ? false : 'in-memory', 
             });
-            writableStream = await fileHandle.createWritable();
-            muxerTarget = new FileSystemWritableFileStreamTarget(writableStream);
+
+            const videoEncoder = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => { throw e; } });
+            const targetBitrate = getSmartBitrate(width, height, fps);
+            let codecString = 'avc1.64002a'; if (width > 1920 || height > 1080) codecString = 'avc1.640033'; 
+            const videoConfig = { codec: codecString, width, height, bitrate: targetBitrate, framerate: fps, latencyMode: 'quality' };
+            const vSupport = await VideoEncoder.isConfigSupported(videoConfig);
+            if (!vSupport.supported) {
+                videoConfig.codec = 'avc1.4d002a'; const vSupportMain = await VideoEncoder.isConfigSupported(videoConfig);
+                if (!vSupportMain.supported) videoConfig.codec = 'avc1.42002a';
+            }
+            await videoEncoder.configure(videoConfig);
+
+            // Audio Queue (Buffer before Mux)
+            const audioQueue = [];
+            const audioEncoder = new AudioEncoder({ 
+                output: (chunk, meta) => { audioQueue.push({ chunk, meta, timestamp: chunk.timestamp }); },
+                error: (e) => console.error("Audio Error:", e)
+            });
+            audioEncoder.configure(audioConfig);
+
+            exportStatus = "Mixing Audio...";
+            const allClips = [...$mainTrackClips, ...$audioTrackClips];
+            const mixedBuffer = await mixAllAudio(allClips, durationInSeconds, AUDIO_SR);
+            
+            if (mixedBuffer) {
+                const left = mixedBuffer.getChannelData(0); const right = mixedBuffer.getChannelData(1);
+                const interleaved = convertFloat32ToInt16(interleave(left, right));
+                const chunkSize = AUDIO_SR; const totalSamples = mixedBuffer.length;
+
+                for (let i = 0; i < totalSamples; i += chunkSize) {
+                    if (audioEncoder.state !== 'configured') { console.warn("Audio encoder closed."); break; }
+                    const len = Math.min(chunkSize, totalSamples - i); const chunkData = interleaved.slice(i * 2, (i + len) * 2);
+                    const audioData = new AudioData({
+                        format: 's16', sampleRate: AUDIO_SR, numberOfFrames: len, numberOfChannels: 2,
+                        timestamp: Math.round((i / AUDIO_SR) * 1_000_000), data: chunkData
+                    });
+                    try { audioEncoder.encode(audioData); } catch(e) { console.warn(e); }
+                    audioData.close();
+                }
+                // Safe Flush
+                try { if (audioEncoder.state === 'configured') await audioEncoder.flush(); } catch(e) { console.warn("Audio flush warn:", e); }
+            }
+
+            exportStatus = "Decoding GIFs...";
+            const gifCache = {}; const imageClips = $mainTrackClips.filter(c => c.type === 'image/gif');
+            for (const clip of imageClips) { try { const decoded = await decodeGifFrames(clip.fileUrl); gifCache[clip.id] = decoded; } catch (e) { } }
+
+            exportStatus = "Rendering Video...";
+            const ctx = canvasRef.getContext('2d', { willReadFrequently: true, alpha: false });
+            canvasRef.width = width; canvasRef.height = height;
+            ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+
+            let audioWriteIndex = 0;
+
+            for (let i = 0; i < totalFrames; i++) {
+                if (videoEncoder.state === 'closed') throw new Error("Video Encoder crashed.");
+                const timeInSeconds = i / fps; const timestampMicros = i * (1_000_000 / fps);
+                exportProgress = Math.round((i / totalFrames) * 100);
+                if (i % 30 === 0) { estimatedTimeText = updateETR(timeInSeconds, durationInSeconds); await new Promise(r => setTimeout(r, 0)); }
+
+                const activeClip = $mainTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
+                const activeText = $textTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
+                currentProcessingClip = activeClip;
+
+                ctx.fillStyle = '#000'; ctx.fillRect(0, 0, width, height);
+
+                if (activeClip) {
+                    let sourceElement = null; let sw, sh;
+                    if (activeClip.type === 'image/gif' && gifCache[activeClip.id]) {
+                        const gifData = gifCache[activeClip.id]; const clipInternalTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
+                        const loopTime = clipInternalTime % gifData.totalDuration; const frameObj = gifData.frames.find(f => loopTime >= f.startTime && loopTime < (f.startTime + f.duration));
+                        if (frameObj) { sourceElement = frameObj.image; sw = sourceElement.displayWidth; sh = sourceElement.displayHeight; }
+                    } else if (isVideoType(activeClip.type)) {
+                        sourceElement = offscreenVideo;
+                        if (!offscreenVideo.src.includes(activeClip.fileUrl)) { offscreenVideo.src = activeClip.fileUrl; await new Promise(r => offscreenVideo.onloadedmetadata = r); }
+                        const seekTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
+                        await new Promise((resolve) => { const onSeeked = () => { offscreenVideo.removeEventListener('seeked', onSeeked); resolve(); }; offscreenVideo.addEventListener('seeked', onSeeked); offscreenVideo.currentTime = seekTime; });
+                        sw = offscreenVideo.videoWidth; sh = offscreenVideo.videoHeight;
+                    } else if (isImageType(activeClip.type)) {
+                        sourceElement = imageRef;
+                        if (!imageRef.src.includes(activeClip.fileUrl)) { imageRef.src = activeClip.fileUrl; await new Promise((resolve) => { if (imageRef.complete) resolve(); else imageRef.onload = resolve; }); }
+                        sw = imageRef.naturalWidth; sh = imageRef.naturalHeight;
+                    }
+                    if (sourceElement && sw && sh) {
+                        const r = Math.min(width / sw, height / sh); const dw = Math.round(sw * r); const dh = Math.round(sh * r);
+                        const scale = activeClip.scale || 1.0; const cx = Math.round(width / 2 + (activeClip.positionX || 0)); const cy = Math.round(height / 2 + (activeClip.positionY || 0));
+                        ctx.save(); ctx.translate(cx, cy); ctx.scale(scale, scale); ctx.drawImage(sourceElement, -Math.round(dw / 2), -Math.round(dh / 2), dw, dh); ctx.restore();
+                    }
+                }
+                if (activeText) {
+                    const fontSize = activeText.fontSize; const lineHeight = fontSize * 1.2; const lines = activeText.text.split('\n');
+                    ctx.font = `${activeText.fontWeight || 'bold'} ${fontSize}px ${activeText.fontFamily || 'Arial, sans-serif'}`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; 
+                    const x = Math.round((activeText.x / 100) * width); const y = Math.round((activeText.y / 100) * height); const padding = 20;
+                    const totalTextHeight = lines.length * lineHeight; const startY = y - (totalTextHeight / 2) + (lineHeight / 2);
+                    if (activeText.showBackground) {
+                        let maxLineWidth = 0; lines.forEach(line => { const m = ctx.measureText(line); if (m.width > maxLineWidth) maxLineWidth = m.width; });
+                        ctx.fillStyle = activeText.backgroundColor; ctx.fillRect(x - maxLineWidth / 2 - padding, y - totalTextHeight / 2 - padding, maxLineWidth + padding * 2, totalTextHeight + padding * 2);
+                    }
+                    if (activeText.strokeWidth > 0) { ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = activeText.strokeWidth; ctx.strokeStyle = activeText.strokeColor; }
+                    ctx.fillStyle = activeText.color;
+                    lines.forEach((line, index) => { const lineY = startY + (index * lineHeight); if (activeText.strokeWidth > 0) ctx.strokeText(line, x, lineY); ctx.fillText(line, x, lineY); });
+                }
+
+                const frame = new VideoFrame(canvasRef, { timestamp: timestampMicros });
+                const keyFrame = i % (fps * 2) === 0; 
+                
+                videoEncoder.encode(frame, { keyFrame });
+                
+                // Interleave Audio
+                while (audioWriteIndex < audioQueue.length && audioQueue[audioWriteIndex].timestamp <= timestampMicros) {
+                    const { chunk, meta } = audioQueue[audioWriteIndex];
+                    muxer.addAudioChunk(chunk, meta);
+                    audioWriteIndex++;
+                }
+                frame.close();
+            }
+
+            // Remaining audio
+            while (audioWriteIndex < audioQueue.length) {
+                const { chunk, meta } = audioQueue[audioWriteIndex];
+                muxer.addAudioChunk(chunk, meta);
+                audioWriteIndex++;
+            }
+
+            Object.values(gifCache).forEach(data => data.frames.forEach(f => f.image.close()));
+            offscreenVideo.src = ""; offscreenVideo.remove();
+            await videoEncoder.flush(); muxer.finalize();
+
+            if (writableStream) { await writableStream.close(); console.log("Stream closed."); } 
+            else if (muxerTarget instanceof ArrayBufferTarget) {
+                const { buffer } = muxer.target; const blob = new Blob([buffer], { type: 'video/mp4' }); const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `fastvideocutter_export_${Date.now()}.mp4`; document.body.appendChild(a); a.click(); setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 1000);
+            }
+            isExporting.set(false); startExportTrigger.set(0);
+            if (typeof window !== 'undefined') { if (window.gtag) window.gtag('event', 'video_export', { 'event_category': 'engagement', 'event_label': 'duration', 'value': Math.round(durationInSeconds) }); fetch('/api/discord', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'export', filename: activeClip?.name || 'Mixed', duration: durationInSeconds.toFixed(1) }) }).catch(() => {}); }
+
         } catch (err) {
-            if (err.name === 'AbortError') {
-            isExporting.set(false);
-            window.removeEventListener('beforeunload', preventClose);
-            return;
-            }
-            console.warn("FS API failed:", err);
-            muxerTarget = new ArrayBufferTarget();
-        }
-        } else {
-        muxerTarget = new ArrayBufferTarget();
-        }
-
-        // === 選擇音訊編碼器（AAC→Opus 自動降級） ===
-        exportStatus = "Preparing Audio...";
-        const { config: audioConfig, muxerCodec: audioMuxCodec, sampleRate: AUDIO_SR } = await chooseAudioEncoderConfig();
-
-        // === 建立 Muxer（音訊設定與編碼器對齊） ===
-        const muxer = new Muxer({
-        target: muxerTarget,
-        video: { codec: 'avc', width, height },
-        audio: { codec: audioMuxCodec, numberOfChannels: 2, sampleRate: AUDIO_SR },
-        fastStart: muxerTarget instanceof ArrayBufferTarget ? false : 'in-memory',
-        });
-
-        // === 視訊編碼器 ===
-        const videoEncoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (e) => { throw e; }
-        });
-        const targetBitrate = getSmartBitrate(width, height, fps);
-        let codecString = 'avc1.64002a'; // High
-        if (width > 1920 || height > 1080) codecString = 'avc1.640033'; // High level up
-        const videoConfig = { codec: codecString, width, height, bitrate: targetBitrate, framerate: fps, latencyMode: 'quality' };
-        const vSupport = await VideoEncoder.isConfigSupported(videoConfig);
-        if (!vSupport.supported) {
-        videoConfig.codec = 'avc1.4d002a'; // Main
-        const vSupportMain = await VideoEncoder.isConfigSupported(videoConfig);
-        if (!vSupportMain.supported) videoConfig.codec = 'avc1.42002a'; // Baseline
-        }
-        await videoEncoder.configure(videoConfig);
-
-        // === 音訊編碼器 ===
-        const audioQueue = [];
-        const audioEncoder = new AudioEncoder({
-        output: (chunk, meta) => { audioQueue.push({ chunk, meta, timestamp: chunk.timestamp }); },
-        error: (e) => console.error("Audio Error:", e)
-        });
-        audioEncoder.configure(audioConfig);
-
-        // === 混音（取樣率與編碼器一致） ===
-        exportStatus = "Mixing Audio...";
-        const allClips = [...$mainTrackClips, ...$audioTrackClips];
-        const mixedBuffer = await mixAllAudio(allClips, durationInSeconds, AUDIO_SR);
-
-        // === f32 + interleaved 餵給 AudioEncoder ===
-        if (mixedBuffer) {
-        const left = mixedBuffer.getChannelData(0);
-        const right = mixedBuffer.getChannelData(1);
-        const interleavedF32 = interleave(left, right);
-
-        const chunkSize = AUDIO_SR; // 1 秒一塊
-        const totalSamples = mixedBuffer.length;
-
-        for (let i = 0; i < totalSamples; i += chunkSize) {
-            if (audioEncoder.state !== 'configured') break;
-
-            const len = Math.min(chunkSize, totalSamples - i);
-            const slice = interleavedF32.subarray(i * 2, (i + len) * 2);
-
-            const audioData = new AudioData({
-            format: 'f32',
-            sampleRate: AUDIO_SR,
-            numberOfFrames: len,
-            numberOfChannels: 2,
-            timestamp: Math.round((i / AUDIO_SR) * 1_000_000),
-            data: slice,
-            layout: 'interleaved'
-            });
-
-            try { audioEncoder.encode(audioData); } catch (e) { console.warn(e); }
-            audioData.close();
-        }
-
-        try {
-            if (audioEncoder.state === 'configured') await audioEncoder.flush();
-        } catch (e) { console.warn("Audio flush warn:", e); }
-        }
-
-        // === GIF 預解碼（保留你的原有邏輯） ===
-        exportStatus = "Decoding GIFs...";
-        const gifCache = {};
-        const imageClips = $mainTrackClips.filter(c => c.type === 'image/gif');
-        for (const clip of imageClips) {
-        try {
-            const decoded = await decodeGifFrames(clip.fileUrl);
-            gifCache[clip.id] = decoded;
-        } catch (e) {}
-        }
-
-        // === 逐帧渲染 ===
-        exportStatus = "Rendering Video...";
-        const ctx = canvasRef.getContext('2d', { willReadFrequently: true, alpha: false });
-        canvasRef.width = width; canvasRef.height = height;
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-
-        let audioWriteIndex = 0;
-
-        for (let i = 0; i < totalFrames; i++) {
-        if (videoEncoder.state === 'closed') throw new Error("Video Encoder crashed.");
-        const timeInSeconds = i / fps;
-        const timestampMicros = i * (1_000_000 / fps);
-
-        exportProgress = Math.round((i / totalFrames) * 100);
-        if (i % 30 === 0) {
-            estimatedTimeText = updateETR(timeInSeconds, durationInSeconds);
-            await new Promise(r => setTimeout(r, 0));
-        }
-
-        const activeClip = $mainTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
-        const activeText = $textTrackClips.find(clip => timeInSeconds >= clip.startOffset && timeInSeconds < (clip.startOffset + clip.duration));
-        currentProcessingClip = activeClip;
-
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, width, height);
-
-        if (activeClip) {
-            let sourceElement = null; let sw, sh;
-
-            if (activeClip.type === 'image/gif' && gifCache[activeClip.id]) {
-            const gifData = gifCache[activeClip.id];
-            const clipInternalTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
-            const loopTime = clipInternalTime % gifData.totalDuration;
-            const frameObj = gifData.frames.find(f => loopTime >= f.startTime && loopTime < (f.startTime + f.duration));
-            if (frameObj) {
-                sourceElement = frameObj.image;
-                sw = sourceElement.displayWidth;
-                sh = sourceElement.displayHeight;
-            }
-            } else if (isVideoType(activeClip.type)) {
-            sourceElement = offscreenVideo;
-            if (!offscreenVideo.src.includes(activeClip.fileUrl)) {
-                offscreenVideo.src = activeClip.fileUrl;
-                await new Promise(r => offscreenVideo.onloadedmetadata = r);
-            }
-            const seekTime = (timeInSeconds - activeClip.startOffset) + (activeClip.mediaStartOffset || 0);
-            await new Promise((resolve) => {
-                const onSeeked = () => { offscreenVideo.removeEventListener('seeked', onSeeked); resolve(); };
-                offscreenVideo.addEventListener('seeked', onSeeked);
-                offscreenVideo.currentTime = seekTime;
-            });
-            sw = offscreenVideo.videoWidth; sh = offscreenVideo.videoHeight;
-            } else if (isImageType(activeClip.type)) {
-            sourceElement = imageRef;
-            if (!imageRef.src.includes(activeClip.fileUrl)) {
-                imageRef.src = activeClip.fileUrl;
-                await new Promise((resolve) => { if (imageRef.complete) resolve(); else imageRef.onload = resolve; });
-            }
-            sw = imageRef.naturalWidth; sh = imageRef.naturalHeight;
-            }
-
-            if (sourceElement && sw && sh) {
-            const r = Math.min(width / sw, height / sh);
-            const dw = Math.round(sw * r);
-            const dh = Math.round(sh * r);
-            const scale = activeClip.scale || 1.0;
-            const cx = Math.round(width / 2 + (activeClip.positionX || 0));
-            const cy = Math.round(height / 2 + (activeClip.positionY || 0));
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.scale(scale, scale);
-            ctx.drawImage(sourceElement, -Math.round(dw / 2), -Math.round(dh / 2), dw, dh);
-            ctx.restore();
-            }
-        }
-
-        if (activeText) {
-            const fontSize = activeText.fontSize;
-            const lineHeight = fontSize * 1.2;
-            const lines = activeText.text.split('\n');
-            ctx.font = `${activeText.fontWeight || 'bold'} ${fontSize}px ${activeText.fontFamily || 'Arial, sans-serif'}`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            const x = Math.round((activeText.x / 100) * width);
-            const y = Math.round((activeText.y / 100) * height);
-            const padding = 20;
-            const totalTextHeight = lines.length * lineHeight;
-            const startY = y - (totalTextHeight / 2) + (lineHeight / 2);
-
-            if (activeText.showBackground) {
-            let maxLineWidth = 0;
-            lines.forEach(line => { const m = ctx.measureText(line); if (m.width > maxLineWidth) maxLineWidth = m.width; });
-            ctx.fillStyle = activeText.backgroundColor;
-            ctx.fillRect(x - maxLineWidth / 2 - padding, y - totalTextHeight / 2 - padding, maxLineWidth + padding * 2, totalTextHeight + padding * 2);
-            }
-
-            if (activeText.strokeWidth > 0) {
-            ctx.lineJoin = 'round';
-            ctx.miterLimit = 2;
-            ctx.lineWidth = activeText.strokeWidth;
-            ctx.strokeStyle = activeText.strokeColor;
-            }
-            ctx.fillStyle = activeText.color;
-            lines.forEach((line, index) => {
-            const lineY = startY + (index * lineHeight);
-            if (activeText.strokeWidth > 0) ctx.strokeText(line, x, lineY);
-            ctx.fillText(line, x, lineY);
-            });
-        }
-
-        const frame = new VideoFrame(canvasRef, { timestamp: timestampMicros });
-        const keyFrame = i % (fps * 2) === 0;
-        videoEncoder.encode(frame, { keyFrame });
-
-        // 依時間戳把音訊寫入 muxer
-        while (audioWriteIndex < audioQueue.length && audioQueue[audioWriteIndex].timestamp <= timestampMicros) {
-            const { chunk, meta } = audioQueue[audioWriteIndex];
-            muxer.addAudioChunk(chunk, meta);
-            audioWriteIndex++;
-        }
-
-        frame.close();
-        }
-
-        // 把剩餘音訊寫完
-        while (audioWriteIndex < audioQueue.length) {
-        const { chunk, meta } = audioQueue[audioWriteIndex];
-        muxer.addAudioChunk(chunk, meta);
-        audioWriteIndex++;
-        }
-
-        // 清理
-        Object.values(gifCache).forEach(data => data.frames.forEach(f => f.image.close()));
-        offscreenVideo.src = "";
-        offscreenVideo.remove();
-
-        await videoEncoder.flush();
-        muxer.finalize();
-
-        // 輸出檔案
-        if (writableStream) {
-        await writableStream.close();
-        console.log("Stream closed.");
-        } else if (muxerTarget instanceof ArrayBufferTarget) {
-        const { buffer } = muxer.target;
-        const blob = new Blob([buffer], { type: 'video/mp4' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `fastvideocutter_export_${Date.now()}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }, 1000);
-        }
-
-        isExporting.set(false);
-        startExportTrigger.set(0);
-
-        if (typeof window !== 'undefined') {
-        if (window.gtag) window.gtag('event', 'video_export', { 'event_category': 'engagement', 'event_label': 'duration', 'value': Math.round(durationInSeconds) });
-        fetch('/api/discord', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'export', filename: currentProcessingClip?.name || 'Mixed', duration: durationInSeconds.toFixed(1) })
-        }).catch(() => {});
-        }
-
-    } catch (err) {
-        console.error(err);
-        alert(`Export Failed: ${err.message}`);
-        if (writableStream) writableStream.close().catch(() => {});
-        if (typeof window !== 'undefined') {
-        fetch('/api/discord', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'error', filename: currentProcessingClip?.name || "Unknown", errorMessage: err.message })
-        }).catch(() => {});
-        }
-        isExporting.set(false);
-        startExportTrigger.set(0);
-    } finally {
-        window.removeEventListener('beforeunload', preventClose);
-    }
+            console.error(err); alert(`Export Failed: ${err.message}`);
+            if (writableStream) writableStream.close().catch(() => {});
+            if (typeof window !== 'undefined') fetch('/api/discord', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'error', filename: currentProcessingClip?.name || "Unknown", errorMessage: err.message }) }).catch(() => {});
+            isExporting.set(false); startExportTrigger.set(0);
+        } finally { window.removeEventListener('beforeunload', preventClose); }
     }
 
+    // ============================================================
+    // Helper Functions (Consolidated)
+    // ============================================================
 
+    function getMediaDuration(file, url) {
+      return new Promise((resolve) => {
+        if (file.type.startsWith('image')) { resolve({ duration: 3, width: 1920, height: 1080 }); return; } 
+        const isVideo = file.type.startsWith('video') || file.name.toLowerCase().endsWith('.mov');
+        const element = isVideo ? document.createElement('video') : document.createElement('audio');
+        element.preload = 'metadata'; element.muted = true; element.src = url; if (isVideo) element.playsInline = true;
+        const isMov = file.name.toLowerCase().endsWith('.mov') || file.type === 'video/quicktime';
+        let isResolved = false;
+        const timeout = setTimeout(() => {
+            if (isResolved) return; isResolved = true;
+            if (isMov) { alert(`Load Failed: ${file.name}\nTry Chrome.`); resolve(null); }
+            else { console.warn("Timeout, default 30s"); resolve({ duration: 30, width: 1280, height: 720 }); }
+        }, 4000);
+        element.onloadedmetadata = () => {
+            if (isResolved) return;
+            if (element instanceof HTMLVideoElement && (element.videoWidth === 0 || element.videoHeight === 0)) {
+                isResolved = true; clearTimeout(timeout); alert(`Format Error: ${file.name}`); resolve(null); return;
+            }
+            const rawDuration = element.duration;
+            const vWidth = element.videoWidth || 0;
+            const vHeight = element.videoHeight || 0;
+            if (rawDuration !== Infinity && !isNaN(rawDuration) && rawDuration > 0) {
+                isResolved = true; clearTimeout(timeout); resolve({ duration: rawDuration, width: vWidth, height: vHeight }); return;
+            }
+            element.currentTime = 1e7; 
+            element.onseeked = () => {
+                if (isResolved) return; isResolved = true; clearTimeout(timeout);
+                let realDuration = element.currentTime;
+                if (realDuration === 0 || realDuration > 360000) if (element.buffered.length > 0) realDuration = element.buffered.end(element.buffered.length - 1);
+                if (realDuration === 0 || realDuration > 360000) realDuration = 30; 
+                resolve({ duration: realDuration, width: vWidth, height: vHeight });
+            };
+        };
+        element.onerror = () => { if (isResolved) return; isResolved = true; clearTimeout(timeout); resolve({ duration: 5, width: 0, height: 0 }); };
+      });
+    }
 
+    function calculateAspectRatio(w, h) {
+        if (!w || !h) return '16:9';
+        const ratio = w / h;
+        if (Math.abs(ratio - 16/9) < 0.05) return '16:9';
+        if (Math.abs(ratio - 9/16) < 0.05) return '9:16';
+        if (Math.abs(ratio - 1) < 0.05) return '1:1';
+        if (Math.abs(ratio - 4/5) < 0.05) return '4:5';
+        return 'custom';
+    }
 
+    function updateETR(currentTimestamp, totalDuration) {
+        const now = Date.now(); const elapsedRealTime = (now - exportStartTime) / 1000; 
+        if (elapsedRealTime < 2 || currentTimestamp <= 0) return "Calculating...";
+        const processingSpeed = currentTimestamp / elapsedRealTime;
+        const remainingVideoSeconds = totalDuration - currentTimestamp;
+        const secondsLeft = remainingVideoSeconds / processingSpeed;
+        if (!isFinite(secondsLeft) || secondsLeft < 0) return "Calculating...";
+        if (secondsLeft < 60) return `${Math.ceil(secondsLeft)}s remaining`;
+        const minutes = Math.floor(secondsLeft / 60); const seconds = Math.ceil(secondsLeft % 60);
+        return `${minutes}m ${seconds}s remaining`;
+    }
 
+    function getSmartBitrate(width, height, fps) {
+        const numPixels = width * height;
+        if (numPixels >= 8_294_400) return 80_000_000; // 4K
+        if (numPixels >= 3_686_400) return 40_000_000; // 2K
+        if (numPixels >= 2_073_600) return 18_000_000; // 1080p
+        if (numPixels >= 921_600) return 8_000_000;    // 720p
+        return 4_000_000;
+    }
 
-
-
-
-
-
+    function convertFloat32ToInt16(float32Array) {
+        const int16Array = new Int16Array(float32Array.length);
+        for (let i = 0; i < float32Array.length; i++) {
+            const s = Math.max(-1, Math.min(1, float32Array[i]));
+            int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        return int16Array;
+    }
 
     async function mixAllAudio(clips, totalDuration, targetSampleRate) {
         try {
@@ -850,7 +642,7 @@
     }
 </script>
 
-<!-- HTML Template 保持不變 -->
+<!-- HTML Template -->
 <div class="flex-1 bg-[#101010] relative flex flex-col justify-center items-center overflow-hidden w-full h-full select-none">
     <canvas bind:this={canvasRef} class="hidden"></canvas>
     <audio bind:this={audioRef} class="hidden"></audio>
