@@ -1,8 +1,8 @@
 <script>
     import { currentVideoSource } from '../stores/playerStore';
-    // 引入 Stores (包含 resolveOverlaps)
-    import { draggedFile, uploadedFiles, textTrackClips, createTextClip, resolveOverlaps } from '../stores/timelineStore';
-    // 🔥 新增：引入 History Store
+    // 引入 Stores
+    import { draggedFile, uploadedFiles, textTrackClips, createTextClip, resolveOverlaps, projectSettings, mainTrackClips } from '../stores/timelineStore';
+    // 引入 History Store
     import { addToHistory } from '../stores/historyStore';
     
     // 引入工具函式
@@ -11,26 +11,37 @@
     import { get } from 'svelte/store';
     
     let fileInput;
-    
-    // UI 狀態
     let isProcessing = false;
-    let activeFilter = 'all'; // 'all', 'video', 'audio', 'image'
-    let activeTab = 'media';  // 'media' or 'text'
+    let activeFilter = 'all'; 
+    let activeTab = 'media';
   
     function handleClick() { 
         if (isProcessing) return; 
         fileInput.click(); 
     }
   
-    // 🔥 Helper: 取得檔案真實長度
-    function getMediaDuration(file, url) {
+    // 🔥🔥🔥 核心修正 1：升級此函數，一次取得 時間 + 寬 + 高 🔥🔥🔥
+    function getMediaInfo(file, url) {
       return new Promise((resolve) => {
-        if (file.type.startsWith('image')) { resolve(3); return; } 
+        
+        // A. 處理圖片 (Image)
+        if (file.type.startsWith('image')) { 
+            const img = new Image();
+            img.src = url;
+            img.onload = () => {
+                resolve({ duration: 3, width: img.naturalWidth, height: img.naturalHeight });
+            };
+            img.onerror = () => {
+                resolve({ duration: 3, width: 1920, height: 1080 }); // 預設值
+            };
+            return; 
+        } 
   
+        // B. 處理影片/音訊 (Video/Audio)
         const isVideo = file.type.startsWith('video') || file.name.toLowerCase().endsWith('.mov');
         const element = isVideo ? document.createElement('video') : document.createElement('audio');
         
-        element.preload = 'auto'; 
+        element.preload = 'metadata'; 
         element.muted = true;
         element.src = url;
         if (isVideo) element.playsInline = true;
@@ -38,51 +49,38 @@
         const isMov = file.name.toLowerCase().endsWith('.mov') || file.type === 'video/quicktime';
         let isResolved = false;
   
+        // 超時保護
         const timeout = setTimeout(() => {
             if (isResolved) return;
             isResolved = true;
             if (isMov) {
-                alert(`Load Failed: ${file.name}\n\nYour system may not support this video format (likely HEVC). Please use MP4 or try Chrome/Safari.`);
+                alert(`Load Failed: ${file.name}\n\nSystem format issue. Try Chrome.`);
                 resolve(null);
             } else {
-                console.warn("⚠️ [Debug] Read timeout, returning default 30s");
-                resolve(30);
+                console.warn("⚠️ [Debug] Read timeout, returning default");
+                resolve({ duration: 30, width: 1280, height: 720 });
             }
         }, 4000);
   
         element.onloadedmetadata = () => {
             if (isResolved) return;
-  
-            if (element instanceof HTMLVideoElement) {
-                if (element.videoWidth === 0 || element.videoHeight === 0) {
-                    isResolved = true;
-                    clearTimeout(timeout);
-                    alert(`Format Not Supported: ${file.name}`);
-                    resolve(null);
-                    return;
-                }
-                try {
-                    element.currentTime = 0.1; 
-                    const cvs = document.createElement('canvas');
-                    cvs.width = 16; cvs.height = 16;
-                    const ctx = cvs.getContext('2d');
-                    ctx.drawImage(element, 0, 0, 16, 16);
-                } catch (e) {
-                    console.warn("Pixel read warning:", e);
-                }
-            }
-  
+            
+            // 讀取寬高 (如果是音訊則為 0)
+            const vWidth = (element.videoWidth) || 0;
+            const vHeight = (element.videoHeight) || 0;
             const rawDuration = element.duration;
-            const isWebM = file.type === 'video/webm' || file.name.toLowerCase().endsWith('.webm');
-  
-            if (!isWebM && rawDuration !== Infinity && !isNaN(rawDuration)) {
+
+            // 優先信任瀏覽器
+            if (rawDuration !== Infinity && !isNaN(rawDuration) && rawDuration > 0) {
                 isResolved = true;
                 clearTimeout(timeout);
-                resolve(rawDuration);
+                // 🔥 回傳完整資訊
+                resolve({ duration: rawDuration, width: vWidth, height: vHeight });
                 return;
             }
   
-            console.log("⚠️ [Debug] Starting WebM duration fix...");
+            // WebM 修復邏輯
+            console.log("⚠️ [Debug] Fixing WebM duration...");
             element.currentTime = 1e7; 
             
             element.onseeked = () => {
@@ -91,19 +89,16 @@
                 clearTimeout(timeout);
   
                 let realDuration = element.currentTime;
-                
-                if (Math.abs(realDuration - rawDuration) < 1 || realDuration > 36000) {
+                if (realDuration === 0 || realDuration > 360000) {
                     if (element.buffered.length > 0) {
-                        const bufferedEnd = element.buffered.end(element.buffered.length - 1);
-                        if (bufferedEnd > 0) realDuration = bufferedEnd;
+                        realDuration = element.buffered.end(element.buffered.length - 1);
                     }
                 }
-  
-                if (realDuration === 0 && rawDuration > 0 && rawDuration !== Infinity) {
-                     resolve(rawDuration);
-                } else {
-                     resolve(realDuration);
+                if (realDuration === 0 || realDuration > 360000) {
+                     realDuration = 30;
                 }
+                // 🔥 回傳完整資訊
+                resolve({ duration: realDuration, width: vWidth, height: vHeight });
             };
         };
   
@@ -112,13 +107,24 @@
             isResolved = true;
             clearTimeout(timeout);
             if (isMov) {
-                alert(`Cannot Load: ${file.name}\nFormat not supported.`);
+                alert(`Cannot Load: ${file.name}`);
                 resolve(null);
             } else {
-                resolve(5); 
+                resolve({ duration: 5, width: 0, height: 0 });
             }
         };
       });
+    }
+
+    // 輔助：計算比例字串
+    function calculateAspectRatio(w, h) {
+        if (!w || !h) return '16:9';
+        const ratio = w / h;
+        if (Math.abs(ratio - 16/9) < 0.05) return '16:9';
+        if (Math.abs(ratio - 9/16) < 0.05) return '9:16';
+        if (Math.abs(ratio - 1) < 0.05) return '1:1';
+        if (Math.abs(ratio - 4/5) < 0.05) return '4:5';
+        return 'custom';
     }
   
     // 處理檔案上傳
@@ -136,9 +142,13 @@
               }
   
               const url = URL.createObjectURL(file);
-              const duration = await getMediaDuration(file, url);
               
-              if (duration === null) return null;
+              // 🔥🔥🔥 核心修正 2：使用 getMediaInfo 取得所有資訊 🔥🔥🔥
+              const info = await getMediaInfo(file, url);
+              
+              if (!info) return null; // 讀取失敗
+
+              const { duration, width, height } = info;
 
               // 長影片警告
               const DURATION_LIMIT = 1800; 
@@ -169,6 +179,8 @@
                   type: file.type || (isVideo ? 'video/quicktime' : 'application/octet-stream'),
                   url: url,
                   duration: duration,
+                  width: width,   // ✅ 現在這裡一定有值了
+                  height: height, // ✅ 現在這裡一定有值了
                   file: file, 
                   thumbnails: thumbnailBlobs, 
                   waveform: waveform, 
@@ -179,10 +191,32 @@
           const results = await Promise.all(processedPromises);
           const validFiles = results.filter(result => result !== null);
           
+          // 🔥🔥🔥 核心修正 3：自動設定畫布解析度 (Debug Log) 🔥🔥🔥
+          const currentClips = get(mainTrackClips);
+          
+          if (currentClips.length === 0 && validFiles.length > 0) {
+              // 找出第一個有效的影片
+              const firstVideo = validFiles.find(f => (f.type.startsWith('video') || f.name.endsWith('.mov')) && f.width > 0);
+              
+              if (firstVideo) {
+                  // 記錄 Undo 點
+                  addToHistory();
+
+                  console.log(`[Auto-Set] Detected video size: ${firstVideo.width} x ${firstVideo.height}`);
+
+                  projectSettings.update(s => ({
+                      ...s,
+                      width: firstVideo.width,
+                      height: firstVideo.height,
+                      aspectRatio: 'original'
+                  }));
+              }
+          }
+          // 🔥🔥🔥 結束 🔥🔥🔥
+
           uploadedFiles.update(currentFiles => [...currentFiles, ...validFiles]);
           
-          // Import 通知
-        if (validFiles.length > 0) {
+          if (validFiles.length > 0) {
             const firstFile = validFiles[0];
             fetch('/api/discord', {
                 method: 'POST',
@@ -246,12 +280,8 @@
         });
     }
   
-    // 🔥🔥🔥 核心修改：新增文字前呼叫 addToHistory 🔥🔥🔥
     function addTextToTimeline() {
-        // 1. 先存檔
         addToHistory();
-
-        // 2. 再執行修改
         const clips = get(textTrackClips);
         const currentMaxTime = clips.length > 0 ? Math.max(...clips.map(c => c.startOffset + c.duration)) : 0;
         const newClip = createTextClip(currentMaxTime);
@@ -275,14 +305,13 @@
   </script>
   
   <div class="flex flex-col h-full">
-      
+      <!-- UI 部分保持不變，直接複製原本的即可 -->
       <div class="flex border-b border-gray-700 mb-4 shrink-0">
           <button class="flex-1 py-3 text-sm font-medium {activeTab === 'media' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-[#252525]' : 'text-gray-400 hover:text-gray-200'}" on:click={() => activeTab = 'media'}>Media</button>
           <button class="flex-1 py-3 text-sm font-medium {activeTab === 'text' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-[#252525]' : 'text-gray-400 hover:text-gray-200'}" on:click={() => activeTab = 'text'}>Text</button>
       </div>
   
       {#if activeTab === 'media'}
-          
           <div class="shrink-0 mb-4">
               <button 
                   on:click={handleClick} 
@@ -299,7 +328,7 @@
               </button>
               <input id="global-file-input" bind:this={fileInput} type="file" class="hidden" multiple accept="image/*,video/*,audio/*,.mov,.mkv" on:change={handleFileChange} />
           </div>
-  
+          <!-- Filters -->
           <div class="flex items-center gap-2 mb-2 shrink-0 overflow-x-auto no-scrollbar pb-1">
               <button class="px-3 py-1 rounded-full text-[10px] font-medium border transition-colors whitespace-nowrap {activeFilter === 'all' ? 'bg-gray-200 text-black border-gray-200' : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400'}" on:click={() => activeFilter = 'all'}>All ({safeFiles.length})</button>
               <button class="px-3 py-1 rounded-full text-[10px] font-medium border transition-colors whitespace-nowrap {activeFilter === 'video' ? 'bg-cyan-900 text-cyan-400 border-cyan-500' : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400'}" on:click={() => activeFilter = 'video'}>Video ({countVideo})</button>
@@ -307,6 +336,7 @@
               <button class="px-3 py-1 rounded-full text-[10px] font-medium border transition-colors whitespace-nowrap {activeFilter === 'image' ? 'bg-purple-900 text-purple-400 border-purple-500' : 'bg-transparent text-gray-400 border-gray-600 hover:border-gray-400'}" on:click={() => activeFilter = 'image'}>Image ({countImage})</button>
           </div>
   
+          <!-- Grid -->
           {#if filteredFiles.length > 0}
               <div class="grid grid-cols-2 gap-2 overflow-y-auto flex-1 pr-1 custom-scrollbar content-start">
                   {#each filteredFiles as file}
