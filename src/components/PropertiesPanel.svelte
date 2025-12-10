@@ -1,4 +1,5 @@
 <script>
+    // 🔥 確保引入 uploadedFiles (為了找原始尺寸)
     import { selectedClipIds, mainTrackClips, audioTrackClips, textTrackClips, projectSettings, uploadedFiles } from '../stores/timelineStore';
     import { addToHistory } from '../stores/historyStore';
     
@@ -6,7 +7,7 @@
     let isMultiSelection = false;
     let trackType = null; 
 
-    // 原始解析度狀態
+    // 🔥 1. 補回：原始解析度變數
     let originalRes = null;
 
     $: {
@@ -37,7 +38,7 @@
         }
     }
 
-    // 自動偵測 Timeline 第一個影片的原始尺寸
+    // 🔥 2. 補回：自動偵測原始尺寸邏輯
     $: {
         const firstVideoClip = $mainTrackClips.find(c => c.type.startsWith('video') || c.name.endsWith('.mov'));
         
@@ -53,11 +54,12 @@
         }
     }
 
+    // 存檔快照
     function saveSnapshot() {
         addToHistory();
     }
 
-    // 🔥🔥🔥 關鍵修改：還原原始解析度按鈕功能 🔥🔥🔥
+    // 🔥 3. 補回：還原原始解析度功能
     function setOriginalResolution() {
         if (!originalRes) return;
         saveSnapshot();
@@ -66,7 +68,7 @@
             ...s,
             width: originalRes.width,
             height: originalRes.height,
-            aspectRatio: 'original' // 明確設定狀態，避免跟 16:9 衝突
+            aspectRatio: 'original'
         }));
     }
 
@@ -82,6 +84,40 @@
         }
     }
 
+    // --- Text Presets (網紅風格) ---
+    const textPresets = [
+        {
+            name: "The Beast",
+            style: { fontFamily: "Impact, sans-serif", color: "#FFFF00", strokeWidth: 5, strokeColor: "#000000", showBackground: false, fontWeight: "900", fontSize: 60 },
+            previewClass: "bg-gray-800 text-yellow-400 font-black border-black border-2"
+        },
+        {
+            name: "Hormozi",
+            style: { fontFamily: "Arial, sans-serif", color: "#FFFFFF", strokeWidth: 0, showBackground: true, backgroundColor: "#000000cc", fontWeight: "bold", fontSize: 48 },
+            previewClass: "bg-black text-white font-bold"
+        },
+        {
+            name: "Neon",
+            style: { fontFamily: "Verdana, sans-serif", color: "#00FFFF", strokeWidth: 2, strokeColor: "#FF00FF", showBackground: false, fontWeight: "bold", fontSize: 50 },
+            previewClass: "bg-slate-900 text-cyan-400 border-purple-500 border font-bold"
+        },
+        {
+            name: "Minimal",
+            style: { fontFamily: "Georgia, serif", color: "#FFFFFF", strokeWidth: 2, strokeColor: "#000000", showBackground: false, fontWeight: "normal", fontSize: 40 },
+            previewClass: "bg-gray-500 text-white font-serif italic"
+        }
+    ];
+
+    function applyPreset(preset) {
+        if (trackType !== 'text') return;
+        saveSnapshot();
+        textTrackClips.update(clips => clips.map(c => {
+            if ($selectedClipIds.includes(c.id)) return { ...c, ...preset.style };
+            return c;
+        }));
+    }
+
+    // --- Property Updaters ---
     function updateText(e) { updateProperty('text', e.target.value); }
     function updateColor(e) { updateProperty('color', e.target.value); }
     function updateFontSize(e) { updateProperty('fontSize', parseInt(e.target.value)); }
@@ -113,7 +149,6 @@
 
     function updateStrokeWidth(e) { updateProperty('strokeWidth', parseInt(e.target.value)); }
     function updateStrokeColor(e) { updateProperty('strokeColor', e.target.value); }
-
     function updateScale(e) { updateProperty('scale', parseFloat(e.target.value)); }
     function updatePosX(e) { updateProperty('positionX', parseInt(e.target.value)); }
     function updatePosY(e) { updateProperty('positionY', parseInt(e.target.value)); }
@@ -127,7 +162,7 @@
         else if (ratio === '4:5') projectSettings.set({ width: 1080, height: 1350, aspectRatio: '4:5' });
     }
 
-    // 手動更新寬高
+    // 手動更新寬高 (打字時)
     function onDimensionInput(e, prop) {
         const val = parseInt(e.target.value);
         if (!isNaN(val) && val > 0) {
@@ -135,6 +170,7 @@
         }
     }
 
+    // 手動更新寬高 (打完後 - 強制偶數)
     function onDimensionChange(e, prop) {
         let val = parseInt(e.target.value);
         if (isNaN(val) || val <= 0) return;
@@ -177,9 +213,8 @@
                 <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Canvas Settings</span>
                 <div class="bg-[#202020] p-4 rounded border border-gray-700 space-y-3">
                     <label class="text-xs text-gray-400">Aspect Ratio</label>
-                    
                     <div class="grid grid-cols-2 gap-2">
-                        <!-- 🔥🔥🔥 修正版 Original Button：只判斷 aspectRatio === 'original' 🔥🔥🔥 -->
+                        <!-- 🔥 4. 補回：Original Button (只在 aspectRatio 為 'original' 時顯亮) -->
                         {#if originalRes}
                             <button 
                                 on:click={setOriginalResolution} 
@@ -193,7 +228,6 @@
                             </button>
                         {/if}
 
-                        <!-- 其他按鈕保持不變，它們會跟著 aspectRatio 狀態自動切換 -->
                         <button on:click={() => setAspectRatio('16:9')} class="px-2 py-2 rounded text-xs border transition-colors {$projectSettings.aspectRatio === '16:9' ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}">16:9 (YouTube)</button>
                         <button on:click={() => setAspectRatio('9:16')} class="px-2 py-2 rounded text-xs border transition-colors {$projectSettings.aspectRatio === '9:16' ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}">9:16 (TikTok)</button>
                         <button on:click={() => setAspectRatio('1:1')} class="px-2 py-2 rounded text-xs border transition-colors {$projectSettings.aspectRatio === '1:1' ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}">1:1 (Square)</button>
@@ -203,25 +237,11 @@
                     <div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-700/50">
                         <div>
                             <label class="text-[10px] text-gray-500 mb-1 block">Width (px)</label>
-                            <input 
-                                type="number" 
-                                value={$projectSettings.width} 
-                                on:focus={saveSnapshot} 
-                                on:input={(e) => onDimensionInput(e, 'width')} 
-                                on:change={(e) => onDimensionChange(e, 'width')}
-                                class="w-full bg-[#2a2a2a] text-white text-xs rounded border border-gray-600 px-2 py-1 text-center focus:border-cyan-500 outline-none"
-                            />
+                            <input type="number" value={$projectSettings.width} on:focus={saveSnapshot} on:input={(e) => onDimensionInput(e, 'width')} on:change={(e) => onDimensionChange(e, 'width')} class="w-full bg-[#2a2a2a] text-white text-xs rounded border border-gray-600 px-2 py-1 text-center focus:border-cyan-500 outline-none"/>
                         </div>
                         <div>
                             <label class="text-[10px] text-gray-500 mb-1 block">Height (px)</label>
-                            <input 
-                                type="number" 
-                                value={$projectSettings.height} 
-                                on:focus={saveSnapshot} 
-                                on:input={(e) => onDimensionInput(e, 'height')} 
-                                on:change={(e) => onDimensionChange(e, 'height')}
-                                class="w-full bg-[#2a2a2a] text-white text-xs rounded border border-gray-600 px-2 py-1 text-center focus:border-cyan-500 outline-none"
-                            />
+                            <input type="number" value={$projectSettings.height} on:focus={saveSnapshot} on:input={(e) => onDimensionInput(e, 'height')} on:change={(e) => onDimensionChange(e, 'height')} class="w-full bg-[#2a2a2a] text-white text-xs rounded border border-gray-600 px-2 py-1 text-center focus:border-cyan-500 outline-none"/>
                         </div>
                     </div>
                     <div class="text-[10px] text-gray-600 text-center">Export will use this resolution.</div>
@@ -229,7 +249,6 @@
             </div>
 
         {:else}
-            <!-- Clip Properties -->
             <div class="flex flex-col gap-6">
                 <!-- Info -->
                 <div class="space-y-2">
@@ -269,11 +288,23 @@
                     </div>
                 {/if}
 
-                <!-- Text Editor -->
+                <!-- Text Editor with Presets -->
                 {#if selectedClip.type === 'text' && !isMultiSelection}
                     <div class="space-y-4 border-t border-gray-700 pt-4">
                         <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Text Style</span>
                         
+                        <!-- 🔥 5. 補回：Presets 按鈕區 -->
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            {#each textPresets as preset}
+                                <button 
+                                    on:click={() => applyPreset(preset)}
+                                    class="py-2 text-[10px] rounded hover:scale-95 transition-transform shadow-md {preset.previewClass}"
+                                >
+                                    {preset.name}
+                                </button>
+                            {/each}
+                        </div>
+
                         <div class="space-y-1">
                             <label class="text-xs text-gray-400">Content</label>
                             <textarea value={selectedClip.text} on:focus={saveSnapshot} on:input={updateText} class="w-full bg-[#2a2a2a] border border-gray-600 rounded p-2 text-sm text-white focus:border-cyan-500 outline-none" rows="2"></textarea>
