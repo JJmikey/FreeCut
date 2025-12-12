@@ -1,5 +1,4 @@
 <script>
-    // 🔥 確保引入 uploadedFiles (為了找原始尺寸)
     import { selectedClipIds, mainTrackClips, audioTrackClips, textTrackClips, projectSettings, uploadedFiles } from '../stores/timelineStore';
     import { addToHistory } from '../stores/historyStore';
     
@@ -7,9 +6,10 @@
     let isMultiSelection = false;
     let trackType = null; 
 
-    // 🔥 1. 補回：原始解析度變數
+    // 原始解析度變數
     let originalRes = null;
 
+    // 監聽選取狀態
     $: {
         if ($selectedClipIds.length === 0) {
             selectedClip = null;
@@ -38,7 +38,7 @@
         }
     }
 
-    // 🔥 2. 補回：自動偵測原始尺寸邏輯
+    // 自動偵測 Timeline 第一個影片的原始尺寸
     $: {
         const firstVideoClip = $mainTrackClips.find(c => c.type.startsWith('video') || c.name.endsWith('.mov'));
         
@@ -54,12 +54,11 @@
         }
     }
 
-    // 存檔快照
     function saveSnapshot() {
         addToHistory();
     }
 
-    // 🔥 3. 補回：還原原始解析度功能
+    // 還原原始解析度
     function setOriginalResolution() {
         if (!originalRes) return;
         saveSnapshot();
@@ -70,6 +69,17 @@
             height: originalRes.height,
             aspectRatio: 'original'
         }));
+    }
+
+    // 更新背景模式 (Black/White/Color/Blur)
+    function updateBgMode(mode) {
+        saveSnapshot();
+        projectSettings.update(s => ({ ...s, backgroundMode: mode }));
+    }
+
+    // 更新背景顏色
+    function updateCanvasBgColor(e) {
+        projectSettings.update(s => ({ ...s, backgroundColor: e.target.value }));
     }
 
     function updateProperty(key, value) {
@@ -84,7 +94,7 @@
         }
     }
 
-    // --- Text Presets (網紅風格) ---
+    // --- Text Presets ---
     const textPresets = [
         {
             name: "The Beast",
@@ -149,20 +159,25 @@
 
     function updateStrokeWidth(e) { updateProperty('strokeWidth', parseInt(e.target.value)); }
     function updateStrokeColor(e) { updateProperty('strokeColor', e.target.value); }
+
+    // --- Video/Animation Updaters ---
     function updateScale(e) { updateProperty('scale', parseFloat(e.target.value)); }
     function updatePosX(e) { updateProperty('positionX', parseInt(e.target.value)); }
     function updatePosY(e) { updateProperty('positionY', parseInt(e.target.value)); }
     function updateVolume(e) { updateProperty('volume', parseFloat(e.target.value)); }
+    function updateAnimIn(e) { updateProperty('animIn', e.target.value); }
+    function updateAnimOut(e) { updateProperty('animOut', e.target.value); }
+    function updateAnimInDur(e) { updateProperty('animInDuration', parseFloat(e.target.value)); }
+    function updateAnimOutDur(e) { updateProperty('animOutDuration', parseFloat(e.target.value)); }
 
     function setAspectRatio(ratio) {
         saveSnapshot(); 
-        if (ratio === '16:9') projectSettings.set({ width: 1280, height: 720, aspectRatio: '16:9' });
-        else if (ratio === '9:16') projectSettings.set({ width: 720, height: 1280, aspectRatio: '9:16' });
-        else if (ratio === '1:1') projectSettings.set({ width: 1080, height: 1080, aspectRatio: '1:1' });
-        else if (ratio === '4:5') projectSettings.set({ width: 1080, height: 1350, aspectRatio: '4:5' });
+        if (ratio === '16:9') projectSettings.set({ width: 1280, height: 720, aspectRatio: '16:9', backgroundMode: $projectSettings.backgroundMode, backgroundColor: $projectSettings.backgroundColor });
+        else if (ratio === '9:16') projectSettings.set({ width: 720, height: 1280, aspectRatio: '9:16', backgroundMode: $projectSettings.backgroundMode, backgroundColor: $projectSettings.backgroundColor });
+        else if (ratio === '1:1') projectSettings.set({ width: 1080, height: 1080, aspectRatio: '1:1', backgroundMode: $projectSettings.backgroundMode, backgroundColor: $projectSettings.backgroundColor });
+        else if (ratio === '4:5') projectSettings.set({ width: 1080, height: 1350, aspectRatio: '4:5', backgroundMode: $projectSettings.backgroundMode, backgroundColor: $projectSettings.backgroundColor });
     }
 
-    // 手動更新寬高 (打字時)
     function onDimensionInput(e, prop) {
         const val = parseInt(e.target.value);
         if (!isNaN(val) && val > 0) {
@@ -170,7 +185,6 @@
         }
     }
 
-    // 手動更新寬高 (打完後 - 強制偶數)
     function onDimensionChange(e, prop) {
         let val = parseInt(e.target.value);
         if (isNaN(val) || val <= 0) return;
@@ -214,7 +228,7 @@
                 <div class="bg-[#202020] p-4 rounded border border-gray-700 space-y-3">
                     <label class="text-xs text-gray-400">Aspect Ratio</label>
                     <div class="grid grid-cols-2 gap-2">
-                        <!-- 🔥 4. 補回：Original Button (只在 aspectRatio 為 'original' 時顯亮) -->
+                        <!-- Original Button -->
                         {#if originalRes}
                             <button 
                                 on:click={setOriginalResolution} 
@@ -244,7 +258,26 @@
                             <input type="number" value={$projectSettings.height} on:focus={saveSnapshot} on:input={(e) => onDimensionInput(e, 'height')} on:change={(e) => onDimensionChange(e, 'height')} class="w-full bg-[#2a2a2a] text-white text-xs rounded border border-gray-600 px-2 py-1 text-center focus:border-cyan-500 outline-none"/>
                         </div>
                     </div>
-                    <div class="text-[10px] text-gray-600 text-center">Export will use this resolution.</div>
+
+                    <!-- 🔥🔥🔥 補回：背景樣式控制 🔥🔥🔥 -->
+                    <div class="pt-4 border-t border-gray-700/50 space-y-2">
+                        <label class="text-xs text-gray-400">Background Style</label>
+                        <div class="grid grid-cols-4 gap-1">
+                            <button on:click={() => updateBgMode('black')} class="px-1 py-1.5 rounded text-[10px] border transition-colors {$projectSettings.backgroundMode === 'black' ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}">Black</button>
+                            <button on:click={() => updateBgMode('white')} class="px-1 py-1.5 rounded text-[10px] border transition-colors {$projectSettings.backgroundMode === 'white' ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}">White</button>
+                            <button on:click={() => updateBgMode('color')} class="px-1 py-1.5 rounded text-[10px] border transition-colors {$projectSettings.backgroundMode === 'color' ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}">Color</button>
+                            <button on:click={() => updateBgMode('blur')} class="px-1 py-1.5 rounded text-[10px] border transition-colors {$projectSettings.backgroundMode === 'blur' ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}">Blur</button>
+                        </div>
+                        {#if $projectSettings.backgroundMode === 'color'}
+                            <div class="flex items-center gap-2 mt-2 bg-[#2a2a2a] p-1 rounded border border-gray-600">
+                                <input type="color" value={$projectSettings.backgroundColor} on:input={updateCanvasBgColor} on:change={saveSnapshot} class="w-6 h-6 bg-transparent border-none cursor-pointer p-0">
+                                <span class="text-xs text-gray-400 font-mono">{$projectSettings.backgroundColor}</span>
+                            </div>
+                        {/if}
+                        {#if $projectSettings.backgroundMode === 'blur'}
+                            <div class="text-[10px] text-gray-500 mt-1">Uses original video as blurred background.</div>
+                        {/if}
+                    </div>
                 </div>
             </div>
 
@@ -293,7 +326,7 @@
                     <div class="space-y-4 border-t border-gray-700 pt-4">
                         <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Text Style</span>
                         
-                        <!-- 🔥 5. 補回：Presets 按鈕區 -->
+                        <!-- Presets -->
                         <div class="grid grid-cols-2 gap-2 mb-4">
                             {#each textPresets as preset}
                                 <button 
@@ -373,54 +406,45 @@
                     </div>
                 {/if}
 
-                
-
-                  <!-- 🔥🔥🔥 通用動畫控制區 (Animation) 🔥🔥🔥 -->
-        {#if selectedClip && !isMultiSelection}
-        <div class="space-y-4 border-t border-gray-700 pt-4">
-            <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Animations</span>
-            
-            <!-- Enter Animation -->
-            <div class="space-y-2">
-                <div class="flex justify-between items-center">
-                    <label class="text-xs text-green-400 font-bold">In (Enter)</label>
-                    <div class="flex items-center gap-1">
-                        <input type="number" min="0.1" max="5" step="0.1" value={selectedClip.animInDuration || 1.0} on:focus={saveSnapshot} on:input={(e) => updateProperty('animInDuration', parseFloat(e.target.value))} class="w-10 bg-[#2a2a2a] text-center text-xs rounded border border-gray-600 px-1 outline-none">
-                        <span class="text-[10px] text-gray-500">sec</span>
+                <!-- Animations -->
+                {#if selectedClip && !isMultiSelection}
+                    <div class="space-y-4 border-t border-gray-700 pt-4">
+                        <span class="text-xs text-gray-500 uppercase font-bold tracking-wider">Animations</span>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label class="text-xs text-green-400 font-bold">In (Enter)</label>
+                                <div class="flex items-center gap-1">
+                                    <input type="number" min="0.1" max="5" step="0.1" value={selectedClip.animInDuration || 1.0} on:focus={saveSnapshot} on:input={(e) => updateProperty('animInDuration', parseFloat(e.target.value))} class="w-10 bg-[#2a2a2a] text-center text-xs rounded border border-gray-600 px-1 outline-none">
+                                    <span class="text-[10px] text-gray-500">sec</span>
+                                </div>
+                            </div>
+                            <select value={selectedClip.animIn || 'none'} on:mousedown={saveSnapshot} on:change={(e) => updateProperty('animIn', e.target.value)} class="w-full bg-[#2a2a2a] border border-gray-600 rounded p-1 text-sm text-white focus:border-cyan-500 outline-none">
+                                <option value="none">None</option>
+                                <option value="fade">Fade In</option>
+                                <option value="zoom">Zoom In</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label class="text-xs text-red-400 font-bold">Out (Exit)</label>
+                                <div class="flex items-center gap-1">
+                                    <input type="number" min="0.1" max="5" step="0.1" value={selectedClip.animOutDuration || 1.0} on:focus={saveSnapshot} on:input={(e) => updateProperty('animOutDuration', parseFloat(e.target.value))} class="w-10 bg-[#2a2a2a] text-center text-xs rounded border border-gray-600 px-1 outline-none">
+                                    <span class="text-[10px] text-gray-500">sec</span>
+                                </div>
+                            </div>
+                            <select value={selectedClip.animOut || 'none'} on:mousedown={saveSnapshot} on:change={(e) => updateProperty('animOut', e.target.value)} class="w-full bg-[#2a2a2a] border border-gray-600 rounded p-1 text-sm text-white focus:border-cyan-500 outline-none">
+                                <option value="none">None</option>
+                                <option value="fade">Fade Out</option>
+                                <option value="zoom">Zoom Out</option>
+                            </select>
+                        </div>
                     </div>
+                {/if}
+
+                <!-- Delete -->
+                <div class="pt-4 border-t border-gray-700">
+                    <button on:click={handleDelete} class="w-full py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded text-sm transition-colors flex items-center justify-center gap-2">Delete {isMultiSelection ? 'Selected' : 'Clip'}</button>
                 </div>
-                <select value={selectedClip.animIn || 'none'} on:mousedown={saveSnapshot} on:change={(e) => updateProperty('animIn', e.target.value)} class="w-full bg-[#2a2a2a] border border-gray-600 rounded p-1 text-sm text-white focus:border-cyan-500 outline-none">
-                    <option value="none">None</option>
-                    <option value="fade">Fade In</option>
-                    <option value="zoom">Zoom In</option>
-                </select>
-            </div>
-
-            <!-- Exit Animation -->
-            <div class="space-y-2">
-                <div class="flex justify-between items-center">
-                    <label class="text-xs text-red-400 font-bold">Out (Exit)</label>
-                    <div class="flex items-center gap-1">
-                        <input type="number" min="0.1" max="5" step="0.1" value={selectedClip.animOutDuration || 1.0} on:focus={saveSnapshot} on:input={(e) => updateProperty('animOutDuration', parseFloat(e.target.value))} class="w-10 bg-[#2a2a2a] text-center text-xs rounded border border-gray-600 px-1 outline-none">
-                        <span class="text-[10px] text-gray-500">sec</span>
-                    </div>
-                </div>
-                <select value={selectedClip.animOut || 'none'} on:mousedown={saveSnapshot} on:change={(e) => updateProperty('animOut', e.target.value)} class="w-full bg-[#2a2a2a] border border-gray-600 rounded p-1 text-sm text-white focus:border-cyan-500 outline-none">
-                    <option value="none">None</option>
-                    <option value="fade">Fade Out</option>
-                    <option value="zoom">Zoom Out</option>
-                </select>
-            </div>
-        </div>
-    {/if}
-
-
-            <!-- Delete -->
-            <div class="pt-4 border-t border-gray-700">
-                <button on:click={handleDelete} class="w-full py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded text-sm transition-colors flex items-center justify-center gap-2">Delete {isMultiSelection ? 'Selected' : 'Clip'}</button>
-            </div>
-
-
             </div>
         {/if}
     </div>

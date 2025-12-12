@@ -10,7 +10,10 @@ export const draggedFile = writable(null);
 export const projectSettings = writable({
     width: 1280,
     height: 720,
-    aspectRatio: '16:9'
+    aspectRatio: '16:9',
+    // 🔥🔥🔥 新增：背景設定 🔥🔥🔥
+    backgroundMode: 'black', // 'black', 'white', 'color', 'blur'
+    backgroundColor: '#000000'
 });
 
 // 新增：素材庫 Store
