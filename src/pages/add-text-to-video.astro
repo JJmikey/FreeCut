@@ -1,6 +1,7 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 
+// Features (保持不變)
 const features = [
   {
     title: "Custom Text Styles",
@@ -18,10 +19,41 @@ const features = [
     icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-pink-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`
   }
 ];
-// 🔥 定義專屬的 Description (針對 SEO 優化)
+
+// 🔥 定義步驟資料 (Yellow/Orange Theme)
+const steps = [
+  {
+    step: "01",
+    title: "Import & Add",
+    desc: "Upload video to timeline. Click the 'Text' tab and select 'Add Default Text' to create a text layer."
+  },
+  {
+    step: "02",
+    title: "Type & Position",
+    desc: "Select the purple text clip. Type your content in the Properties Panel and drag the text on screen."
+  },
+  {
+    step: "03",
+    title: "Style It",
+    desc: "Make it pop! Change font family, color, stroke (outline), and add a background box for readability."
+  },
+  {
+    step: "04",
+    title: "Export Video",
+    desc: "Click Export to permanently burn the text/subtitles into your video file."
+  }
+];
+
+// 🔥 定義左側的「樣式展示」資料
+const textStyles = [
+  { label: "BOLD Headlines", style: "font-black text-white" },
+  { label: "Subtitles", style: "font-medium text-slate-900 bg-white/90 px-2 rounded" },
+  { label: "Neon Glow", style: "font-bold text-yellow-300 drop-shadow-[0_0_10px_rgba(253,224,71,0.8)]" },
+  { label: "@Watermark", style: "font-mono text-slate-400 text-sm border border-dashed border-slate-600 px-2 py-1 rounded" },
+];
+
 const pageTitle = "Add Text to Video Online - Subtitles & Watermarks | FastVideoCutter";
 const pageDescription = "Quickly add text or subtitles to video clips in your browser. No file upload needed – your video stays private on your device. Works with 4K, MP4, and MOV. Free & No Watermark.";
-
 ---
 
 <MarketingLayout
@@ -33,20 +65,98 @@ const pageDescription = "Quickly add text or subtitles to video clips in your br
   features={features}
 >
 
-  <h2 class="text-2xl font-bold text-white mt-8 mb-4">Free Online Video Text Editor</h2>
-  <p class="text-gray-400 mb-6">
-    Adding text overlays is essential for social media videos like TikTok and Instagram Reels. 
-    With <strong>FastVideoCutter</strong>, you can add professional-looking text overlays in seconds without downloading any software.
-  </p>
+  <!-- Content Block: Yellow/Orange 深色風格 -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
+    
+    <div class="bg-[#0B1121] border border-slate-800 rounded-[2.5rem] p-8 md:p-16 relative overflow-hidden shadow-2xl">
+      
+      <!-- 背景光暈 (Yellow Theme) -->
+      <div class="absolute top-0 left-0 w-[500px] h-[500px] bg-yellow-600/10 rounded-full blur-[120px] pointer-events-none -translate-y-1/2 -translate-x-1/4"></div>
+      <div class="absolute bottom-0 right-0 w-[400px] h-[400px] bg-orange-600/10 rounded-full blur-[100px] pointer-events-none translate-y-1/3 translate-x-1/4"></div>
 
-  <h3 class="text-xl font-bold text-white mt-8 mb-4">How to add text?</h3>
-  <ol class="list-decimal pl-5 text-gray-400 space-y-2">
-    <li>Upload your video and drag it to the timeline.</li>
-    <li>Click the <strong>"Text" tab</strong> in the sidebar and click <strong>"Add Default Text"</strong>.</li>
-    <li>Select the purple text clip on the timeline.</li>
-    <li>Use the <strong>Properties Panel</strong> on the right to type your text.</li>
-    <li>Customize color, background, stroke, and position.</li>
-    <li>Click <strong>Export</strong> to burn the text into the video permanently.</li>
-  </ol>
+      <div class="grid lg:grid-cols-2 gap-16 relative z-10">
+        
+        <!-- LEFT COLUMN: The Hook & Style Showcase -->
+        <div class="flex flex-col justify-center">
+          
+          <!-- Badge -->
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 w-fit mb-6">
+             <span class="flex h-2 w-2 relative">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+             </span>
+             <span class="text-xs font-bold text-yellow-400 tracking-wide uppercase">Captions & Subtitles</span>
+          </div>
+
+          <h2 class="text-3xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
+            <br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400">Free  </span> Online Video Text Editor
+          </h2>
+
+          <p class="text-lg text-slate-400 leading-relaxed mb-8">
+            Adding text overlays is essential for social media videos like TikTok and Instagram Reels.
+            <br/><br/>
+            With <strong>FastVideoCutter</strong>, you can add professional-looking text overlays in seconds without downloading any software. 
+          </p>
+
+          <!-- Style Showcase Grid -->
+          <div class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">What can you create?</h3>
+            <div class="grid grid-cols-2 gap-3">
+              {textStyles.map(item => (
+                <div class="bg-slate-800/50 border border-slate-700/50 h-16 rounded-lg flex items-center justify-center text-center overflow-hidden relative">
+                   {/* Checkerboard bg for transparency effect */}
+                   <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(#4b5563 1px, transparent 1px); background-size: 8px 8px;"></div>
+                   <span class={`relative z-10 ${item.style}`}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: Step Cards -->
+        <div>
+          <h3 class="text-2xl font-bold text-white mb-8 flex items-center gap-3">
+            <span class="w-1.5 h-8 bg-gradient-to-b from-yellow-400 to-orange-500 rounded-full"></span>
+            How to add text?
+          </h3>
+
+          <div class="space-y-4">
+            {steps.map((item) => (
+              <div class="group relative bg-[#131B2E] hover:bg-[#1A2339] border border-slate-800/60 p-5 rounded-2xl transition-all duration-300 flex gap-5 items-start">
+                
+                <!-- Number Badge (Yellow Style) -->
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-yellow-500/10 text-yellow-400 flex items-center justify-center font-bold text-sm border border-yellow-500/20 mt-0.5 shadow-sm shadow-yellow-500/10">
+                  {item.step}
+                </div>
+
+                <!-- Text Content -->
+                <div>
+                  <h4 class="text-lg font-bold text-white mb-1 group-hover:text-yellow-200 transition-colors">
+                    {item.title}
+                  </h4>
+                  <p class="text-slate-400 text-sm leading-relaxed">
+                    {item.desc}
+                  </p>
+                </div>
+
+              </div>
+            ))}
+          </div>
+
+          <!-- Action Button -->
+          <div class="mt-8 text-right">
+             <a href="/editor" class="inline-flex items-center gap-2 text-yellow-400 font-bold hover:text-yellow-300 transition-colors group">
+                Open Text Editor
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:translate-x-1 transition-transform"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+             </a>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
 
 </MarketingLayout>
