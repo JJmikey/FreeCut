@@ -1,13 +1,12 @@
 ---
-// src/pages/convert-webm-to-mp4.astro
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 
-// 針對 "WebM to MP4" 的特色介紹
+// Features (保持不變)
 const features = [
   {
     title: "Fix Compatibility Issues",
     desc: "WebM files often fail to play on iPhones, QuickTime, or Premiere Pro. Convert them to MP4 to ensure they work everywhere.",
-    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-cyan-400"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-cyan-400"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" x2="12" y1="17" x2="12" y2="21"/></svg>`
   },
   {
     title: "No Upload Waiting",
@@ -21,10 +20,46 @@ const features = [
   }
 ];
 
-// 🔥 SEO 優化：標題控制在 65 字元以內，描述包含核心關鍵字
+// 🔥 定義步驟資料 (Cyan/Blue Theme)
+const steps = [
+  {
+    step: "01",
+    title: "Launch Tool",
+    desc: "Click 'Start Editing' to open the converter. It works directly in your browser on Windows, Mac, or Linux."
+  },
+  {
+    step: "02",
+    title: "Drop WebM File",
+    desc: "Drag your .webm file (even huge OBS recordings) into the editor. No uploading means it loads instantly."
+  },
+  {
+    step: "03",
+    title: "Trim (Optional)",
+    desc: "If you only need a highlight, use the timeline to trim or cut your video before converting."
+  },
+  {
+    step: "04",
+    title: "Export MP4",
+    desc: "Click Export. The tool encodes the WebM stream into a standard MP4 file compatible with all devices."
+  }
+];
+
+// 🔥 定義亮點展示資料
+const webmHighlights = [
+  { 
+    title: "OBS & Gaming", 
+    desc: "Streamers and gamers often record in WebM/MKV. Our tool helps you quickly convert these large recordings to MP4 so you can share them on TikTok or YouTube Shorts.", 
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-cyan-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polygon points="10 8 16 12 10 16 10 8"/></svg>` 
+  },
+  { 
+    title: "Save Bandwidth", 
+    desc: "Don't waste data uploading files to the cloud just to convert them. Our offline-first technology saves your bandwidth and keeps your data on your machine.", 
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-400"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>` 
+  }
+];
+
 const pageTitle = "Convert WebM to MP4 Online - Free & No Upload | FastVideoCutter";
 const pageDescription = "Convert WebM to MP4 instantly in your browser. No file upload required. 100% private conversion for OBS recordings and web videos. Free & no watermark.";
-
 ---
 
 <MarketingLayout
@@ -36,66 +71,95 @@ const pageDescription = "Convert WebM to MP4 instantly in your browser. No file 
   features={features}
 >
 
-  <!-- SEO 內容區 -->
-  <div class="space-y-12">
+  <!-- Content Block: Cyan/Blue 深色大圓角風格 -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
     
-    <!-- Introduction -->
-    <div class="text-center max-w-3xl mx-auto">
-      <h2 class="text-3xl font-bold text-white mb-4">Why Convert WebM to MP4?</h2>
-      <p class="text-gray-400 leading-relaxed">
-        Downloaded a video or recorded gameplay with OBS, but it's a <strong>.webm</strong> file that won't open on your iPhone or editing software? 
-        <strong>FastVideoCutter</strong> solves this by converting WebM to the universal MP4 format directly in your browser. 
-        It's faster and safer than traditional online converters because we don't upload your files.
-      </p>
-    </div>
+    <div class="bg-[#0B1121] border border-slate-800 rounded-[2.5rem] p-8 md:p-16 relative overflow-hidden shadow-2xl">
+      
+      <!-- 背景光暈 (Cyan Theme) -->
+      <div class="absolute top-0 left-0 w-[500px] h-[500px] bg-cyan-900/10 rounded-full blur-[120px] pointer-events-none -translate-y-1/2 -translate-x-1/4"></div>
+      <div class="absolute bottom-0 right-0 w-[400px] h-[400px] bg-blue-900/15 rounded-full blur-[100px] pointer-events-none translate-y-1/3 translate-x-1/4"></div>
 
-    <!-- How-to Guide -->
-    <section class="space-y-6">
-        <h2 class="text-2xl font-bold text-white">How to convert WebM to MP4 for free?</h2>
-        <ol class="space-y-4">
-            <li class="flex gap-4 items-start">
-                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">1</span>
-                <p class="pt-1 text-slate-300">Click <strong>"Start Editing"</strong> to launch the tool.</p>
-            </li>
-            <li class="flex gap-4 items-start">
-                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">2</span>
-                <p class="pt-1 text-slate-300">Drag your <strong>.webm</strong> file into the upload box and add it to the timeline.</p>
-            </li>
-            <li class="flex gap-4 items-start">
-                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">3</span>
-                <p class="pt-1 text-slate-300">
-                    (Optional) You can trim or cut the video if you want to remove parts.
-                </p>
-            </li>
-            <li class="flex gap-4 items-start">
-                <span class="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-cyan-400 font-bold border border-slate-700">4</span>
-                <p class="pt-1 text-slate-300">Click <strong>Export</strong>. The tool will automatically encode and save your video as a standard <strong>.mp4</strong> file.</p>
-            </li>
-        </ol>
-    </section>
+      <div class="grid lg:grid-cols-2 gap-16 relative z-10">
+        
+        <!-- LEFT COLUMN: The Hook & Highlight Cards -->
+        <div class="flex flex-col justify-center">
+          
+          <!-- Badge -->
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 w-fit mb-6">
+             <span class="flex h-2 w-2 relative">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+             </span>
+             <span class="text-xs font-bold text-cyan-300 tracking-wide uppercase">Format Freedom</span>
+          </div>
 
-    <!-- Comparison / Benefits -->
-    <div class="grid md:grid-cols-2 gap-8 mt-12">
-        <div class="bg-blue-900/10 border border-blue-800/50 rounded-xl p-6">
-            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
-                Perfect for OBS Users
-            </h3>
-            <p class="text-slate-400 text-sm leading-relaxed">
-                Streamers and gamers often record in WebM/MKV. Our tool helps you quickly convert these large recordings to MP4 so you can share them on TikTok or YouTube Shorts.
-            </p>
+          <h2 class="text-3xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
+           Why  <br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Convert WebM to MP4?</span>
+          </h2>
+
+          <p class="text-lg text-slate-400 leading-relaxed mb-8">
+            Downloaded a video or recorded gameplay with OBS, but it's a .webm file that won't open on your iPhone or editing software?   <strong>FastVideoCutter</strong> solves this by converting WebM to the universal MP4 format directly in your browser. It's faster and safer than traditional online converters because we don't upload your files.
+            <br/><br/>
+        
+          </p>
+
+          <!-- Highlight Cards (原本在底部的區塊整合於此) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {webmHighlights.map(item => (
+              <div class="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl hover:border-cyan-500/40 transition-all duration-300 group">
+                <div class="mb-3 w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform" set:html={item.icon}></div>
+                <h4 class="font-bold text-white text-sm mb-1">{item.title}</h4>
+                <p class="text-xs text-slate-400 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+
         </div>
-        <div class="bg-purple-900/10 border border-purple-800/50 rounded-xl p-6">
-            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Save Bandwidth
-            </h3>
-            <p class="text-slate-400 text-sm leading-relaxed">
-                Don't waste data uploading files to the cloud just to convert them. Our offline-first technology saves your bandwidth and keeps your data on your machine.
-            </p>
-        </div>
-    </div>
 
+        <!-- RIGHT COLUMN: Step Cards -->
+        <div>
+          <h3 class="text-2xl font-bold text-white mb-8 flex items-center gap-3">
+            <span class="w-1.5 h-8 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></span>
+            How to convert WebM to MP4 for free?
+          </h3>
+
+          <div class="space-y-4">
+            {steps.map((item) => (
+              <div class="group relative bg-[#131B2E] hover:bg-[#1A2339] border border-slate-800/60 p-5 rounded-2xl transition-all duration-300 flex gap-5 items-start">
+                
+                <!-- Number Badge (Cyan Style) -->
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold text-sm border border-cyan-500/20 mt-0.5 shadow-sm shadow-cyan-500/10">
+                  {item.step}
+                </div>
+
+                <!-- Text Content -->
+                <div>
+                  <h4 class="text-lg font-bold text-white mb-1 group-hover:text-cyan-200 transition-colors">
+                    {item.title}
+                  </h4>
+                  <p class="text-slate-400 text-sm leading-relaxed">
+                    {item.desc}
+                  </p>
+                </div>
+
+              </div>
+            ))}
+          </div>
+
+          <!-- Quick Action Button -->
+          <div class="mt-8 text-right">
+             <a href="/editor" class="inline-flex items-center gap-2 text-cyan-400 font-bold hover:text-cyan-300 transition-colors group px-4 py-2 bg-slate-900/40 rounded-xl border border-slate-800">
+                Start Converting Now
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:translate-x-1 transition-transform"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+             </a>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
   </div>
 
 </MarketingLayout>
